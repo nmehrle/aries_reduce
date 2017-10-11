@@ -5,3 +5,11 @@ Initially created by Ian Crossfield
 Modified & updated by Nicholas Mehrle
 
 At creation: the relevant script is "aries_reduce.py," which calls various other subfunctions of the other files.
+
+Requirements:
+* PyRAF: http://www.stsci.edu/institute/software_hardware/pyraf
+* MatPlotLib
+* NumPy
+* SciPy
+* astropy (for PyFits)
+* ...
