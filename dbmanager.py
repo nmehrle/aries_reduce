@@ -7,7 +7,7 @@ from collections import MutableMapping
 
 
 """
-json loads a json database into memory as a dict
+Loads a json database into memory as a dict
   requires:
     path: path to foo.json file
   methods:
@@ -50,3 +50,30 @@ class json(MutableMapping):
     with open(self.path,'w') as f:
       _json.dump(self.store, f, indent=2)
 
+"""
+Sample code for adding data to database
+"""
+def addToDb():
+  obsdb = json('obsdb.json')
+  
+  date = '20161016'
+  data = {}
+
+  import os
+  _aphome = os.path.expanduser('~')[1:].replace('/','_')
+
+  data['planet']     = 'Upsilon Andromedae b'
+  data['prefix']     = 'spec_'
+  data['framelist']  = range(73,3824+1)
+  data['flatlist']   = range(13,37+1) 
+  data['darklist']   = range(3825, 3875+1)
+  data['callist']    = range(3876, 3926+1)
+  data['datadir']    = '20161016/'
+  data['ap_suffix']  = 'database/ap_' + _aphome + '_Documents_science_spectroscopy_20161016_proc'
+  data['n_aperture'] = 5
+  data['filter']     = 'OPEN5'
+  data['calnod']     = False
+
+  obsdb[date] = data
+  obsdb.write()
+  print("written!")
