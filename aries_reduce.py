@@ -104,7 +104,6 @@ else:
     _iraf = ns._home + "/atwork/iraf/"
 
 # Eventually, get all initializations from initobs:
-print data
 obs = ns.initobs(data, remote=(not local))
 _proc = obs[1]
 _raw = obs[8]
