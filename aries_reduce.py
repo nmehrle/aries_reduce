@@ -282,9 +282,6 @@ if makeDark:
                     
     ns.write_exptime(_sdark, itime=itime)
 
-
-
-
 if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     ir.imdelete(_sflat)
     ##ir.imdelete(_sflats)
@@ -346,7 +343,6 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     pyfits.writeto(_sflatdcn+postfn, smallnormflat, normflathdr, clobber=True, output_verify='warn')
 
     if verbose: print "Done making dark frame!"
-
 
 if makeMask:  
     if verbose:

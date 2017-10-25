@@ -1910,7 +1910,8 @@ def readfile(fn, cols=None):
         dat = array([map(float, line.split()[cols]) for line in raw])
 
     return dat
-    
+   
+##TODO 
 def initobs(date, **kw):
     """Initialize variables for Nirspec data analysis.
 
@@ -1954,7 +1955,7 @@ def initobs(date, **kw):
 
          rowfix -- list of four lists; which rows to fix in each of
                    four quadrants (see FIX_QUADNOISE).
-"""
+    """
 
     # 2009-07-09 16:58 IJC: Added HD 189733b set (2008jun15b)
     # 2009-07-31 15:17 IJC: Added multi-chop runs (e.g. 2008jun15)
@@ -1974,6 +1975,7 @@ def initobs(date, **kw):
         if (not kw.has_key(key)):
             kw[key] = defaults[key]
 
+    #DATE LIST START
     if date=='2016oct20b':
         planet = 'WASP-33 b'
         prefix = 'spec_'
@@ -2412,14 +2414,14 @@ def initobs(date, **kw):
         filter = base[15]
         calnod = base[17]
 
-
-
-
-
     else:
         print date+' not found!!!!'
         return []
 
+
+
+    #END
+    #######
     if len(date)==9:
         meancal = 'avgcal'
     else:
