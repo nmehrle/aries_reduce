@@ -77,6 +77,7 @@ data = '2016oct15' # GX And
 data = '2016oct15b' # WASP-33
 data = '2016oct19' # WASP-33
 data = '2016oct20b' # WASP-33
+data = '20161016'
 
 
 
@@ -105,12 +106,12 @@ else:
 
 # Eventually, get all initializations from initobs:
 obs = ns.initobs(data, remote=(not local))
-_proc = obs[1]
-_raw = obs[8]
-n_ap = obs[14]  #  number of apertures (i.e., echelle orders)
-filter = obs[15]  # photometric band in which we're operating
-prefn = obs[16]  # filename prefix
-calnod = obs[17] # whether A0V calibrators nod, or not
+_proc  = obs['_proc']
+_raw   = obs['_raw']
+n_ap   = obs['n_aperture']  #  number of apertures (i.e., echelle orders)
+filter = obs['filter']  # photometric band in which we're operating
+prefn  = obs['prefix']  # filename prefix
+calnod = obs['calnod'] # whether A0V calibrators nod, or not
 
 
 procData = processCal or processTarg
@@ -135,7 +136,7 @@ elif filter=='L':
 elif filter=='Karies':
     horizsamp = "10:995"
 
-if filter=='Karies':
+if filter=='Karies' or filter == 'OPEN5':
     observ = 'flwo'
     itime = 'exptime'
     date = 'UTSTART'
@@ -215,20 +216,18 @@ _fmask  = _proc + prefn + "_flatpixelmask"  + maskfn
 _dmask  = _proc + prefn + "_darkpixelmask"  + postfn
 _wldat = 'ec'
 
-
-rawdark  = ns.strl2f(_proc+'rawdark',  obs[9],     clobber=True)
-rawflat_list  = obs[10]  #ns.strl2f(_proc+'rawflat',  obs[10],    clobber=True)
-procflat_list = [el.replace(_raw, _proc) for el in obs[10]] 
+rawdark  = ns.strl2f(_proc+'rawdark', obs['darkfilelist'], clobber=True)
+rawflat_list  = obs['flatfilelist'] #ns.strl2f(_proc+'rawflat',  obs[10],    clobber=True)
+procflat_list = [el.replace(_raw, _proc) for el in obs['flatfilelist']]
 procflat  = ns.strl2f(_proc+'procflat', procflat_list, clobber=True)
-rawcal   = ns.strl2f(_proc+'rawcal',   obs[11][0], clobber=True)
-proccal  = ns.strl2f(_proc+'proccal',  obs[11][1], clobber=True)
-rawtarg  = ns.strl2f(_proc+'rawtarg',  obs[12][0], clobber=True)
-proctarg = ns.strl2f(_proc+'proctarg', obs[12][1], clobber=True)
-speccal  = ns.strl2f(_proc+'speccal',  obs[13][0], clobber=True)
-spectarg = ns.strl2f(_proc+'spectarg', obs[13][1], clobber=True)
+rawcal   = ns.strl2f(_proc+'rawcal',   obs['rawcalfilelist'], clobber=True)
+proccal  = ns.strl2f(_proc+'proccal',  obs['proccalfilelist'], clobber=True)
+rawtarg  = ns.strl2f(_proc+'rawtarg',  obs['rawtargfilelist'], clobber=True)
+proctarg = ns.strl2f(_proc+'proctarg', obs['proctargfilelist'], clobber=True)
+speccal  = ns.strl2f(_proc+'speccal',  obs['speccalfilelist'], clobber=True)
+spectarg = ns.strl2f(_proc+'spectarg', obs['spectargfilelist'], clobber=True)
 
 meancal  =  prefn + 'avgcal'
-
 
 ir.unlearn('ccdproc')
 ir.unlearn('imcombine')
@@ -270,7 +269,6 @@ ir.apnormalize.readnoise = readnoise
 
 
 ir.set(observatory=observ)
-
 # Combine dark frames into a single dark frame:
 if makeDark:
     ir.imdelete(_sdark)
@@ -384,7 +382,7 @@ if makeMask:
     ir.imdelete(_mask1+','+_mask2+','+_sflatdc+'neg,blah,blahneg')
 
     # Examine the dark frames for highly variable pixels:
-    ns.darkbpmap(obs[9], clipsigma=5, sigma=10, writeto=_dmask, clobber=True, verbose=verbose, outtype=float)
+    ns.darkbpmap(obs['darkfilelist'], clipsigma=5, sigma=10, writeto=_dmask, clobber=True, verbose=verbose, outtype=float)
     #pyfits.writeto(_dmask, ny.zeros(pyfits.getdata(_sflatdc+postfn).shape, dtype=int), clobber=True)
     try:
         ir.imcopy(_dmask, _dmask.replace(postfn, maskfn))
@@ -430,7 +428,7 @@ if procData:
         
         ir.imdelete(meancal)
         if calnod:
-            shutil.copyfile(obs[13][0][0]+postfn, meancal+postfn)
+            shutil.copyfile(obs['speccalfilelist'][0]+postfn, meancal+postfn)
         else:
             ir.imcombine('@'+speccal, meancal, combine='average', reject='avsigclip', weight='median')
 

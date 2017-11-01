@@ -270,8 +270,7 @@ def write_exptime(filename, coadds='coadds', itime='itime'):
     elif os.path.isfile(filename + ".fits"):
         filename = filename + ".fits"
         coa = pyfits.getval(filename, coadds, ignore_missing_end=True)
-        exptime = 1.0 * coa * pyfits.getval(filename, itime, \
-                                                ignore_missing_end=True)
+        exptime = 1.0 * coa * pyfits.getval(filename, itime, ignore_missing_end=True)
         ir.ccdhedit(filename, 'exptime', exptime)
     
 
@@ -2001,7 +2000,7 @@ def initobs(date, **kw):
     else:
         raise KeyError('Given date, '+date+' not found')
 
-    
+    #TODO: BELOW
     if len(date)==9:
         meancal = 'avgcal'
     else:
@@ -2021,9 +2020,13 @@ def initobs(date, **kw):
         _raw = _home + "/atwork/proj/pcsa/data/raw/" + date + "/spec/"
         _model = _home + "/atwork/proj/pcsa/data/model/"
     else:
-        _proc = _home + "/proj/pcsa/data/proc/" + datadir
-        _raw = _home + "/proj/pcsa/data/raw/" + date + "/spec/"
+        # _proc = _home + "/proj/pcsa/data/proc/" + datadir
+        # _raw = _home + "/proj/pcsa/data/raw/" + date + "/spec/"
         _model = _home + "/proj/pcsa/data/model/"
+
+        #TODO
+        _raw  = _home + "/documents/science/spectroscopy/" + date +"/raw/"
+        _proc = _home + "/documents/science/spectroscopy/" + date +"/proc/"
         
     if planet=='55 Cnc e': #'55cnce':
         starmodelfilename = _model + \
@@ -2084,7 +2087,6 @@ def initobs(date, **kw):
         print "WARNING:  may not HAVE CORRECT PLANETARY MODEL!"
         planetmodelfilename = _model + \
             'lte0125_0.31_rainout.HAT-P-11p.redist=0.50.sph.rlam.spec_2.fits'
-
     elif planet=='WASP-33 b':
         print "WARNING:  Using WASP-12 model."
         starmodelfilename = _model + \
@@ -2092,10 +2094,10 @@ def initobs(date, **kw):
         print "WARNING:  Using WASP-12 model."
         planetmodelfilename = _model + \
             'lte6309_4.30_0.28_wasp12.hires_approx.fits'
-
-
     else:
-        stop
+        # stop
+        starmodelfilename = ""
+        planetmodelfilename = ""
 
 
     datalist = filelist(prefix, postfix, framelist)
@@ -2115,11 +2117,36 @@ def initobs(date, **kw):
     telluric_fn = _proc + prefix + meancal + 'int.fits'
     disp = 0.075
 
-    ret = (planet, _proc, datalist, wavefilename, 
-           starmodelfilename, planetmodelfilename, aplist, telluric_fn, _raw,
-           darkfilelist, flatfilelist, (rawcalfilelist, proccalfilelist),
-           (rawtargfilelist, proctargfilelist), (speccalfilelist, spectargfilelist), 
-           n_aperture, filter, prefix, calnod, meancal, disp, aplist_cal)
+    # ret = (planet, _proc, datalist, wavefilename,
+    #        starmodelfilename, planetmodelfilename, aplist, telluric_fn, _raw,
+    #        darkfilelist, flatfilelist, (rawcalfilelist, proccalfilelist),
+    #        (rawtargfilelist, proctargfilelist), (speccalfilelist, spectargfilelist), 
+    #        n_aperture, filter, prefix, calnod, meancal, disp, aplist_cal)
+    ret = {}
+    ret['planet']              = planet
+    ret['_proc']               = _proc
+    ret['datalist']            = datalist
+    ret['wavefilename']        = wavefilename
+    ret['starmodelfilename']   = starmodelfilename
+    ret['planetmodelfilename'] = planetmodelfilename
+    ret['aplist']              = aplist
+    ret['telluric_fn']         = telluric_fn
+    ret['_raw']                = _raw
+    ret['darkfilelist']        = darkfilelist
+    ret['flatfilelist']        = flatfilelist
+    ret['rawcalfilelist']      = rawcalfilelist
+    ret['proccalfilelist']     = proccalfilelist
+    ret['rawtargfilelist']     = rawtargfilelist
+    ret['proctargfilelist']    = proctargfilelist
+    ret['speccalfilelist']     = speccalfilelist
+    ret['spectargfilelist']    = spectargfilelist
+    ret['n_aperture']          = n_aperture
+    ret['filter']              = filter
+    ret['prefix']              = prefix
+    ret['calnod']              = calnod
+    ret['meancal']             = meancal
+    ret['disp']                = disp
+    ret['aplist_cal']          = aplist_cal
     return ret
 
 
@@ -3006,7 +3033,11 @@ def correct_aries_crosstalk(input, **kw):
     """
     # 2016-10-18 15:25 IJMC: Created
     import shutil
-    import pyfits
+    
+    try:
+        from astropy.io import fits as pyfits
+    except:
+        import pyfits
 
 
     defaults = dict(corquad=os.path.expanduser('~/python/corquad-linux'), clobber=False, verbose=False, output=None)
