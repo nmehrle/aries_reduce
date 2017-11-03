@@ -2315,9 +2315,7 @@ def cleanec(input, output, **kw):
         pyfits.writeto(output, ec, clobber=kw['clobber'], \
                            output_verify='warn')
     else:
-        hdr.update('cleanec', \
-                 'echelleogram cleaned (%i passes) by nsdata.cleanec' \
-                       % passNumber)
+        hdr['cleanec'] ='echelleogram cleaned (%i passes) by nsdata.cleanec' % passNumber
         pyfits.writeto(output, ec, clobber=kw['clobber'], header=hdr, \
                            output_verify='warn')
 
@@ -2680,7 +2678,7 @@ def envMet(filename, tz=-10, planet=None, date=None, ignore='***'):
 
         if date is not None:
             obs = initobs(date)
-            rawfiles = obs[12][0]
+            rawfiles = obs['rawtargfilelist']
             jd_start = []
             exptime = []
             try:
@@ -3040,7 +3038,7 @@ def correct_aries_crosstalk(input, **kw):
         import pyfits
 
 
-    defaults = dict(corquad=os.path.expanduser('~/python/corquad-linux'), clobber=False, verbose=False, output=None)
+    defaults = dict(corquad=os.path.expanduser('~/python/corquad'), clobber=False, verbose=False, output=None)
     for key in defaults:
         if (not kw.has_key(key)):
             kw[key] = defaults[key]
