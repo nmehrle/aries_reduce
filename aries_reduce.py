@@ -83,7 +83,7 @@ data = '20161016'
 
 local = True
 
-makeDark    = True
+makeDark    = False
 makeFlat    = True
 makeMask    = True
 processCal  = True
@@ -110,7 +110,7 @@ _proc  = obs['_proc']
 _raw   = obs['_raw']
 n_ap   = obs['n_aperture']  #  number of apertures (i.e., echelle orders)
 filter = obs['filter']  # photometric band in which we're operating
-prefn  = obs['prefix']  # filename prefix
+prefn  = str(obs['prefix'])  # filename prefix
 calnod = obs['calnod'] # whether A0V calibrators nod, or not
 
 
@@ -133,7 +133,7 @@ if filter=='K' or filter=='H':
 elif filter=='L':
     horizsamp = "10:270 440:500 550:980"
 
-elif filter=='Karies':
+elif filter=='Karies' or filter == 'OPEN5':
     horizsamp = "10:995"
 
 if filter=='Karies' or filter == 'OPEN5':
@@ -181,7 +181,7 @@ elif filter=='L':
     cthreshold=400
     rratio = 5
     rthreshold = 300
-elif filter=='Karies':
+elif filter=='Karies' or filter == 'OPEN5':
     cleanec = True
     cleancr = False
     qfix = 'aries'
@@ -220,6 +220,10 @@ rawdark  = ns.strl2f(_proc+'rawdark', obs['darkfilelist'], clobber=True)
 rawflat_list  = obs['flatfilelist'] #ns.strl2f(_proc+'rawflat',  obs[10],    clobber=True)
 procflat_list = [el.replace(_raw, _proc) for el in obs['flatfilelist']]
 procflat  = ns.strl2f(_proc+'procflat', procflat_list, clobber=True)
+
+#added
+rawflat  = ns.strl2f(_raw+'rawflat', obs['flatfilelist'], clobber=True)
+
 rawcal   = ns.strl2f(_proc+'rawcal',   obs['rawcalfilelist'], clobber=True)
 proccal  = ns.strl2f(_proc+'proccal',  obs['proccalfilelist'], clobber=True)
 rawtarg  = ns.strl2f(_proc+'rawtarg',  obs['rawtargfilelist'], clobber=True)
@@ -229,7 +233,7 @@ spectarg = ns.strl2f(_proc+'spectarg', obs['spectargfilelist'], clobber=True)
 
 meancal  =  prefn + 'avgcal'
 
-ir.unlearn('ccdproc')
+# ir.unlearn('ccdproc')
 ir.unlearn('imcombine')
 ir.unlearn('echelle')
 
@@ -286,7 +290,9 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     #ns.correct_aries_crosstalk("@"+_proc +'rawflat', output='@'+_proc + 'procflat')
     ns.correct_aries_crosstalk(rawflat_list, output=procflat_list)
     # 2008-06-04 08:42 IJC: Scale and combine the flats appropriately (as lamp is warming up, flux changes)
-    ir.imcombine("@"+procflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
+    # ir.imcombine("@"+procflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
+
+    ir.imcombine("@"+rawflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
 
     ns.write_exptime(_sflat, itime=itime)
     print _sflat, _sdark
@@ -323,7 +329,6 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
 
     if True: # the old, IRAF way:
         #ir.apnormalize(_sflatdc+'big', _sflatdcn+'big', sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes', cennorm='no', recenter='yes', resize='yes', edit='yes', trace='yes', weights='variance', fittrace='yes', interactive=interactive, background='fit', order=3)
-
         ir.apflatten(_sflatdc+'big', _sflatdcn+'big', sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes',  recenter='yes', resize='yes', edit='yes', trace='yes', fittrace='yes', interactive=interactive, order=3)
 
     else:
@@ -362,8 +367,7 @@ if makeMask:
     #ir.cosmicrays(_sflatdc, 'blah', crmasks=_mask1, threshold=750, npasses=7q
 #    , \
 #                      interactive=False) #interactive)
-    ns.cleanec(_sflatdc, 'blah', npasses=5, clobber=True, badmask=_mask1.replace(maskfn, postfn))
-    
+    ns.cleanec(_sflatdc, 'blah', npasses=1, clobber=True, badmask=_mask1.replace(maskfn, postfn), verbose=True)
     #ir.imcopy(_mask1, _mask1.replace(maskfn, postfn))
     #pyfits.writeto(_mask1, ny.zeros(pyfits.getdata(_sflatdc+postfn).shape, dtype=int), clobber=True)
     pyfits.writeto(_sflatdc+'neg', 0. - pyfits.getdata(_sflatdc+postfn), clobber=True)
@@ -411,6 +415,7 @@ if procData:
         #ns.write_exptime(rawlamp)
 
         # Correct for bad pixels and normalize all the frames by the flat field
+        # will edit for multiple flats
         ir.load('crutil')
         ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix, 
                       qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn), 

@@ -1,3 +1,7 @@
 *.pyc
 pyraf/
 misc/
+blah
+blahneg
+database/
+logfile
