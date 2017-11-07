@@ -1707,7 +1707,13 @@ def setjd(filename, **kw):
     """
     # 2010-09-07 15:14 IJC: Created
 
-    import astrolib
+    try:
+        import astrolib
+    except:
+        try:
+            import PyAstronomy.pyasl as astrolib
+        except:
+            raise ImportError('Astrolib/PyAstronomy not found. Install PyAstronomy from here: http://www.hs.uni-hamburg.de/DE/Ins/Per/Czesla/PyA/PyA/index.html')
 
     try:
         from astropy.io import fits as pyfits
@@ -2663,7 +2669,13 @@ def envMet(filename, tz=-10, planet=None, date=None, ignore='***'):
     except:
         import pyfits
     
-    import astrolib
+    try:
+        import astrolib
+    except:
+        try:
+            import PyAstronomy.pyasl as astrolib
+        except:
+            raise ImportError('Astrolib/PyAstronomy not found. Install PyAstronomy from here: http://www.hs.uni-hamburg.de/DE/Ins/Per/Czesla/PyA/PyA/index.html')
     
     met = readart(filename, ignore=ignore)
 
