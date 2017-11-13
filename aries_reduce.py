@@ -77,7 +77,7 @@ data = '2016oct15' # GX And
 data = '2016oct15b' # WASP-33
 data = '2016oct19' # WASP-33
 data = '2016oct20b' # WASP-33
-data = '20161016'
+data = '2016oct16' #Ups And
 
 
 
@@ -104,8 +104,21 @@ if local:
 else:
     _iraf = ns._home + "/atwork/iraf/"
 
+# User Specific Directories
+_raw  = ns._home + "/documents/science/spectroscopy/" + data +"/raw/"
+if(not os.path.exists(_raw)):
+  raise IOError('No such file or directory '+_raw+'. Update _raw to point to directory containing raw data.')
+
+_proc = ns._home + "/documents/science/spectroscopy/" + data +"/proc/"
+if(not os.path.exists(_proc)):
+  raise IOError('No such file or directory '+_proc+'. Update _proc to point to processed data directory.')
+
+_telluric_dir = ns._home + '/documents/science/spectroscopy/telluric_lines/telluric_hr_'
+
+
+
 # Eventually, get all initializations from initobs:
-obs = ns.initobs(data, remote=(not local))
+obs = ns.initobs(data, remote=(not local), _raw=_raw, _proc=_proc)
 _proc  = obs['_proc']
 _raw   = obs['_raw']
 n_ap   = obs['n_aperture']  #  number of apertures (i.e., echelle orders)
@@ -126,17 +139,20 @@ ir.load('echelle')
 ir.load('twodspec')
 ir.load('apextract')
 
-telluric_list = ns._home + '/proj/pcsa/data/atmo/telluric_hr_' + filter + '.dat'
+telluric_list = _telluric_dir + filter + '.dat'
+if(not os.path.exists(telluric_list)):
+  raise IOError('No such file or directory '+telluric_list+'. Update _telluric_dir to point directory with telluric line list for '+filter+' filter.')
+
 if filter=='K' or filter=='H':
     horizsamp = "10:500 550:995"
 
 elif filter=='L':
     horizsamp = "10:270 440:500 550:980"
 
-elif filter=='Karies' or filter == 'OPEN5':
+elif filter=='Karies':
     horizsamp = "10:995"
 
-if filter=='Karies' or filter == 'OPEN5':
+if filter=='Karies':
     observ = 'flwo'
     itime = 'exptime'
     date = 'UTSTART'
@@ -181,7 +197,7 @@ elif filter=='L':
     cthreshold=400
     rratio = 5
     rthreshold = 300
-elif filter=='Karies' or filter == 'OPEN5':
+elif filter=='Karies':
     cleanec = True
     cleancr = False
     qfix = 'aries'
@@ -541,7 +557,7 @@ if procData:
 
         # Get telluric filename:
         _telluric = ''
-        while (not os.path.isfile(_telluric)) and _telluric<>'q':
+        while (not os.path.isfile(_telluric)) and _telluric!='q':
             temp = os.listdir('.')
             print('\n\nEnter the telluric filename (q to quit); path is unnecessary if\n '
                   ' you saved it in the processed-data directory.  Local possibilities:')

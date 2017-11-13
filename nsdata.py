@@ -1932,6 +1932,15 @@ def initobs(date, **kw):
                       (upsampled) spectra (if True) or the raw
                       1024-pixel spectra (if False)
 
+        _raw       -- raw data directory. Defaults to _home + remoteStr +
+                      "/proj/pcsa/data/raw/" + date + "/spec/"
+
+        _proc      -- processed data directory. Defaults to _home + remoteStr +
+                      "/proj/pcsa/data/proc/" + datadir
+
+        _model     -- model directory. Defaults to _home + remoteStr +
+                      "/proj/pcsa/data/model/"
+
     :OUTPUT:
        a tuple containing the following values, in order:
          planet -- name of planet for use in analysis.planet()
@@ -2022,18 +2031,22 @@ def initobs(date, **kw):
 
     wavefilename = 'winterp.fits'
 
-    if kw['remote']:
-        _proc = _home + "/atwork/proj/pcsa/data/proc/" + datadir
-        _raw = _home + "/atwork/proj/pcsa/data/raw/" + date + "/spec/"
-        _model = _home + "/atwork/proj/pcsa/data/model/"
-    else:
-        # _proc = _home + "/proj/pcsa/data/proc/" + datadir
-        # _raw = _home + "/proj/pcsa/data/raw/" + date + "/spec/"
-        _model = _home + "/proj/pcsa/data/model/"
+    remoteStr = "/atwork" if kw['remote'] else ""
 
-        #TODO
-        _raw  = _home + "/documents/science/spectroscopy/" + date +"/raw/"
-        _proc = _home + "/documents/science/spectroscopy/" + date +"/proc/"
+    if '_proc' in kw:
+        _proc = kw['_proc']
+    else:
+        _proc = _home + remoteStr + "/proj/pcsa/data/proc/" + datadir
+
+    if '_raw' in kw:
+        _raw = kw['_raw']
+    else:
+        _raw = _home + remoteStr + "/proj/pcsa/data/raw/" + date + "/spec/"
+
+    if '_model' in kw:
+        _model = kw['_model']
+    else:
+        _model = _home + remoteStr + "/proj/pcsa/data/model/"
         
     if planet=='55 Cnc e': #'55cnce':
         starmodelfilename = _model + \
