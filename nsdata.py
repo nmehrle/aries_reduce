@@ -208,7 +208,7 @@ def getval(filename, key, *ext, **kw):
         if (not kw.has_key(keyword)):
             kw[keyword] = defaults[keyword]
     
-    if (filename.__class__ <> str) and (len(filename)>1):
+    if (filename.__class__ != str) and (len(filename)>1):
         ret = []
         for file in filename:
             ret.append(pyfits.getval(kw['path']+file, key, *ext))
@@ -322,7 +322,7 @@ def find_features(spec, width=4, absorption=True):
     if width<2:
         print "Width too small, increasing to 2..."
         width = 2
-    elif (int(width)/2.0)<>int(int(width)/2):
+    elif (int(width)/2.0)!=int(int(width)/2):
         print "Width not an even number, increasing to the next-largest even number."
         width = int(width)+1
 
@@ -381,7 +381,7 @@ def dispeval(c, olim, xlim, shift=0, function='chebyshev', fullxlim=None):
 
     from pylab import sort, arange, zeros, size, dot
 
-    if function.lower()<>'chebyshev':
+    if function.lower()!='chebyshev':
         print "nsdata.dispeval only works with chebyshev functions for now"
         return -1
 
@@ -889,7 +889,7 @@ def getirafap(filename, filelist=False, verbose=False):
     # Subfunctions:
     def apapply(ap, filestr, keyword):
                     
-        if filestr.find(keyword)<>-1:
+        if filestr.find(keyword)!=-1:
             filestr = filestr.replace(keyword, '').strip()
             exec( 'ap.' + keyword + '.append(map(float, filestr.split()))' )
         return ap 
@@ -953,7 +953,7 @@ def collapse_objlist(object_list, keyword, suffix='', doarray = False):
     # centers = array(temp).ravel().reshape(len(temp), 6)
     # py.plot(x, centers - py.mean(centers))
 
-    if type(object_list)<>list:
+    if type(object_list)!=list:
         warn('Input object not a list!')
         return []
 
@@ -969,7 +969,7 @@ def collapse_objlist(object_list, keyword, suffix='', doarray = False):
     collapsed_list = []
     mainclass = object_list[0].__class__
     for element in object_list:
-        if element.__class__<>mainclass:
+        if element.__class__!=mainclass:
             warn('Input list is not homogeneous!')
             return []
         elif doarray:
@@ -998,7 +998,7 @@ def file2list(filelist, prefix='', suffix=''):
 
     newlist = []
     
-    if filelist.__class__<>str: 
+    if filelist.__class__!=str: 
         warn('Input to file2list must be a string identifying a filename.')
     elif (not os.path.isfile(filelist)):
         warn('Input file "' + filelist + '" not found!')
@@ -1109,7 +1109,7 @@ def subdata(data, op='median', axis=None, returndata=False):
     elif op=='mean':
         chunk = mean(data, axis=axis)
 
-    if axis<>None:
+    if axis!=None:
         dsh[axis] = 1
         chunk = chunk.reshape(dsh)
 
@@ -1182,7 +1182,7 @@ def divdata(data, op='median', axis=None, badval=nan, returndata=False):
     elif op=='none':
         chunk = ones(nsh,float)
 
-    if axis<>None:
+    if axis!=None:
         chunk = chunk.reshape(nsh)
 
     newdata = 1.0 * data / chunk
@@ -1564,8 +1564,8 @@ def preprocess(*args, **kw):
             kw[key] = defaults[key]
 
     verbose = bool(kw['verbose'])
-    doflat = kw['flat']<>None
-    dobfix = kw['mask']<>None
+    doflat = kw['flat']!=None
+    dobfix = kw['mask']!=None
     clobber = bool(kw['clobber'])
     date = kw['date']
     time = kw['time']
@@ -1580,7 +1580,7 @@ def preprocess(*args, **kw):
 
     # Check whether inputs are lists, filelists, or files:
 
-    if input.__class__<>output.__class__:
+    if input.__class__!=output.__class__:
         print "Files or file lists must be of same type.  Exiting..."
         return
     elif input.__class__==list:
@@ -1602,7 +1602,7 @@ def preprocess(*args, **kw):
         return
  
     # Begin processing tasks
-    if kw['clobber'] and input<>output:
+    if kw['clobber'] and input!=output:
         ir.imdelete(output)
 
     ir.imcopy(input, output)
@@ -1765,7 +1765,7 @@ def setjd(filename, **kw):
             except:
                 dec = 0
         epoch = hdr[kw['epoch']]
-        if epoch <> 2000:
+        if epoch != 2000:
             print "Epoch must be 2000!  Exiting..."
             return -1
 
@@ -1848,18 +1848,18 @@ def linespec(loc, ew, win, **kw):
             kw[key] = defaults[key]
     verbose = bool(kw['verbose'])
     nearest = bool(kw['nearest'])
-    contset = kw['cont']<>None
+    contset = kw['cont']!=None
 
     if contset:
         cont = array(kw['cont']).copy()
-        if len(cont)<>len(win):
+        if len(cont)!=len(win):
             print "Wavelength grid and continuum must have the same length!"
             return -1
     else:
         cont = ones(win.shape)
 
     nlines = len(loc)
-    if nlines <> len(ew):
+    if nlines != len(ew):
         if verbose:  print "len(loc)>>" + str(len(loc))
         if verbose:  print "len(ew)>>" + str(len(ew))
         print "Line locations and equivalent widths must have same length!"
@@ -2217,7 +2217,7 @@ def cleanec(input, output, **kw):
     if verbose: print "CLEANEC begun, input>>", input
 
     # Test for type of input; iterate, if necessary:
-    if input.__class__<>output.__class__:
+    if input.__class__!=output.__class__:
         print "Files or file lists must be of same type.  Exiting..."
         return
     elif input.__class__==list:
@@ -2262,7 +2262,7 @@ def cleanec(input, output, **kw):
             print "Input should be a list of filenames, a string, or " + \
                 "a Numpy array; it appears to be none of these."
 
-    if kw['dispaxis']<>0:
+    if kw['dispaxis']!=0:
         ec = ec.transpose()
 
     ec_original = ec.copy()
@@ -2340,7 +2340,7 @@ def cleanec(input, output, **kw):
                            output_verify='warn')
 
     if kw['badmask'] is not None:
-        pyfits.writeto(kw['badmask'], (ec<>ec_original).astype(int), clobber=kw['clobber'], output_verify='warn')
+        pyfits.writeto(kw['badmask'], (ec!=ec_original).astype(int), clobber=kw['clobber'], output_verify='warn')
         
     if verbose: print "CLEANEC complete, output to>>", output
     return 
@@ -2693,7 +2693,7 @@ def envMet(filename, tz=-10, planet=None, date=None, ignore='***'):
     
     met = readart(filename, ignore=ignore)
 
-    if met<>-1:
+    if met!=-1:
         met.HSTdatetime = ['%s %s' % (ddate, time) for ddate,time in zip(met.HSTdate, met.HSTtime)]
 
         met.jd = [gd2jd(datetime)-tz/24. for datetime in met.HSTdatetime]
@@ -3078,7 +3078,7 @@ def correct_aries_crosstalk(input, **kw):
     clobber = kw['clobber']
     corquad = kw['corquad']
     verbose = kw['verbose']
-    if input.__class__<>output.__class__:
+    if input.__class__!=output.__class__:
         print "Files or file lists must be of same type.  Exiting..."
         return
     elif input.__class__==list:
@@ -3102,7 +3102,7 @@ def correct_aries_crosstalk(input, **kw):
         # return
         raise RuntimeError("'corquad' executable '%s' not found. Exiting." % corquad)
 
-    if clobber and input<>output:
+    if clobber and input!=output:
         ir.imdelete(output)
 
     input = findfitsfile(input)
