@@ -83,7 +83,7 @@ data = '20161016'
 
 local = True
 
-makeDark    = True
+makeDark    = False
 makeFlat    = True
 makeMask    = True
 processCal  = True
