@@ -1125,7 +1125,7 @@
     ]
   }, 
   "2016oct16": {
-    "filter": "OPEN5", 
+    "filter": "Karies", 
     "flatlist": [
       13, 
       14, 
@@ -1157,7 +1157,7 @@
     "datadir": "2016oct16/", 
     "planet": "Upsilon Andromedae b", 
     "prefix": "spec_", 
-    "n_aperture": 5, 
+    "n_aperture": 20, 
     "darklist": [
       3825, 
       3826, 
