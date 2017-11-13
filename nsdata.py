@@ -1513,6 +1513,8 @@ def preprocess(*args, **kw):
 
              rratio = 5 -- fluxratio threshold for iraf.cosmicrays
 
+          corquad = "" -- (str) path to corquad executable
+
          Any inputs set to 'None' disable that part of the processing.
 
     :EXAMPLE:
@@ -1557,7 +1559,7 @@ def preprocess(*args, **kw):
                         cleanec=False, clobber=False, verbose=False, \
                         cthreshold=300, cwindow=25, csigma=20, \
                         cleancr=False, rthreshold=300, rratio=5, \
-                    date='date-obs', time='UTC', dofix=True)
+                    date='date-obs', time='UTC', dofix=True, corquad="")
 
     for key in defaults:
         if (not kw.has_key(key)):
@@ -1626,7 +1628,7 @@ def preprocess(*args, **kw):
     setjd(output, date=date, time=time, jd='JD', hjd='HJD')
     if kw['qfix']:
         if 'aries' in str(kw['qfix']).lower():
-            correct_aries_crosstalk(output, clobber=clobber)
+            correct_aries_crosstalk(output, clobber=clobber,corquad=corquad)
             #ir.hedit(output, 'quadnois', \
             #         'ARIES crosstalk fixed by nsdata.correct_aries_crosstalk', add='YES', update='YES')
         else:
@@ -3064,7 +3066,7 @@ def correct_aries_crosstalk(input, **kw):
         import pyfits
 
 
-    defaults = dict(corquad=os.path.expanduser('~/python/corquad'), clobber=False, verbose=False, output=None)
+    defaults = dict(corquad=os.path.expanduser('~/python/corquad/corquad.e'), clobber=False, verbose=False, output=None)
     for key in defaults:
         if (not kw.has_key(key)):
             kw[key] = defaults[key]
@@ -3075,8 +3077,12 @@ def correct_aries_crosstalk(input, **kw):
     else:
         output = kw['output']
 
+    if kw['corquad'] == "":
+      corquad = defaults['corquad']
+    else:
+      corquad = kw['corquad']
+
     clobber = kw['clobber']
-    corquad = kw['corquad']
     verbose = kw['verbose']
     if input.__class__!=output.__class__:
         print "Files or file lists must be of same type.  Exiting..."

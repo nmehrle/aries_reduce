@@ -115,6 +115,8 @@ if(not os.path.exists(_proc)):
 
 _telluric_dir = ns._home + '/documents/science/spectroscopy/telluric_lines/telluric_hr_'
 
+_corquad = ns._home_+'/python/corquad/corquad.e'
+
 
 
 # Eventually, get all initializations from initobs:
@@ -304,7 +306,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     ##ir.imdelete(_sflats)
     ir.imdelete(_sflatdc)
     #ns.correct_aries_crosstalk("@"+_proc +'rawflat', output='@'+_proc + 'procflat')
-    ns.correct_aries_crosstalk(rawflat_list, output=procflat_list)
+    ns.correct_aries_crosstalk(rawflat_list, output=procflat_list, corquad=_corquad)
     # 2008-06-04 08:42 IJC: Scale and combine the flats appropriately (as lamp is warming up, flux changes)
     # ir.imcombine("@"+procflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
 
@@ -360,7 +362,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     smallnormflat[smallnormflat==0] = 1.
     pyfits.writeto(_sflatdcn+postfn, smallnormflat, normflathdr, clobber=True, output_verify='warn')
 
-    if verbose: print "Done making dark frame!"
+    if verbose: print "Done making dark flat frame!"
 
 if makeMask:  
     if verbose:
@@ -381,14 +383,14 @@ if makeMask:
     ir.delete('blahneg.fits')
 
     #ir.cosmicrays(_sflatdc, 'blah', crmasks=_mask1, threshold=750, npasses=7q
-#    , \
-#                      interactive=False) #interactive)
-    ns.cleanec(_sflatdc, 'blah', npasses=1, clobber=True, badmask=_mask1.replace(maskfn, postfn), verbose=True)
+    #  , \
+    #                  interactive=False) #interactive)
+    ns.cleanec(_sflatdc, 'blah', npasses=5, clobber=True, badmask=_mask1.replace(maskfn, postfn), verbose=True)
     #ir.imcopy(_mask1, _mask1.replace(maskfn, postfn))
     #pyfits.writeto(_mask1, ny.zeros(pyfits.getdata(_sflatdc+postfn).shape, dtype=int), clobber=True)
     pyfits.writeto(_sflatdc+'neg', 0. - pyfits.getdata(_sflatdc+postfn), clobber=True)
     #ir.cosmicrays(_sflatdc+'neg', 'blahneg', crmasks=_mask2, threshold=750, npasses=7) #, \
-#                      interactive=interactive)
+    #                      interactive=interactive)
 
     ns.cleanec(_sflatdc+'neg', 'blahneg', npasses=5, clobber=True, badmask=_mask2.replace(maskfn, postfn))
     #pyfits.writeto(_mask2, ny.zeros(pyfits.getdata(_sflatdc+postfn).shape, dtype=int), clobber=True)
@@ -433,11 +435,11 @@ if procData:
         # Correct for bad pixels and normalize all the frames by the flat field
         # will edit for multiple flats
         ir.load('crutil')
-        ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix, 
-                      qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn), 
+        ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
+                      qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn),
                       cleanec=cleanec, clobber=True, verbose=verbose,
-                      csigma=csigma, cthreshold=cthreshold, 
-                      cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix)
+                      csigma=csigma, cthreshold=cthreshold,
+                      cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix, corquad=_corquad)
 
         if verbose: print "Done correcting cal frames for bad pixels and flat-fielding!"
         
@@ -505,7 +507,7 @@ if procData:
                       qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn), 
                       cleanec=cleanec, clobber=True, verbose=verbose,
                       csigma=csigma, cthreshold=cthreshold, 
-                      cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix)
+                      cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix, corquad=_corquad)
 
         if verbose:  print "Done correcting targ frames for bad pixels and flat-fielding!"
 
