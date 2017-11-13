@@ -1573,8 +1573,9 @@ def preprocess(*args, **kw):
     if doflat:
         if not os.path.isfile(kw['flat']):
             kw['flat'] = kw['flat'] + '.fits'
+            if not os.path.isfile(kw['flat']):
+                raise IOError("File " + kw['flat'] + " not found")
     
-    if verbose: print "kw>>" + str(kw)
     if verbose: print "Keywords are:  "; print kw
 
     # Check whether inputs are lists, filelists, or files:
@@ -1783,8 +1784,8 @@ def setjd(filename, **kw):
         jd = gd2jd(datetime)
         hjd = astrolib.helio_jd(jd - 2400000., ra, dec) + 2400000.
 
-        hdr.update(kw['jd'], jd)
-        hdr.update(kw['hjd'], hjd)
+        hdr[kw['jd']]  =  jd
+        hdr[kw['hjd']] = hjd
         if verbose: print 'jd, hjd, dt>>', jd, hjd, hjd-jd
 
         if 'FREQ.SPE' in hdulist[0].header:
@@ -3084,9 +3085,10 @@ def correct_aries_crosstalk(input, **kw):
         fin.close()
         fout.close()
     if not os.path.isfile(corquad):
-        print "Error: 'corquad' executable '%s' not found. Exiting." % corquad
-        return
-    
+        # print "Error: 'corquad' executable '%s' not found. Exiting." % corquad
+        # return
+        raise RuntimeError("'corquad' executable '%s' not found. Exiting." % corquad)
+
     if clobber and input<>output:
         ir.imdelete(output)
 

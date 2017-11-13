@@ -5,3 +5,5 @@ blah
 blahneg
 database/
 logfile
+*.todo
+
