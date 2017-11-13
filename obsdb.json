@@ -1124,7 +1124,7 @@
       169
     ]
   }, 
-  "20161016": {
+  "2016oct16": {
     "filter": "OPEN5", 
     "flatlist": [
       13, 
@@ -1154,7 +1154,7 @@
       37
     ], 
     "calnod": false, 
-    "datadir": "20161016/", 
+    "datadir": "2016oct16/", 
     "planet": "Upsilon Andromedae b", 
     "prefix": "spec_", 
     "n_aperture": 5, 
@@ -1211,7 +1211,7 @@
       3874, 
       3875
     ], 
-    "ap_suffix": "database/ap_Users_nicholasmehrle_Documents_science_spectroscopy_20161016_proc", 
+    "ap_suffix": "database/ap_Users_nicholasmehrle_Documents_science_spectroscopy_2016oct16_proc", 
     "framelist": [
       73, 
       74, 
