@@ -52,6 +52,7 @@ Other notes:
                        around for a little while!
 2016-10-18 13:50 IJMC: Now apply ARIES quad-detector crosstalk correction
 2017-10-11 16:41 IJMC: Handing this off to Nicholas Mehrle. Good luck!
+2017-10-25 ????? NM  : Moved version control to Git
 """
 
 
@@ -84,10 +85,10 @@ data = '2016oct16' #Ups And
 local = True
 
 makeDark    = False
-makeFlat    = True
-makeMask    = True
+makeFlat    = False
+makeMask    = False
 processCal  = True
-processTarg = True
+processTarg = False
 
 verbose = True
 interactive = True
@@ -115,7 +116,7 @@ if(not os.path.exists(_proc)):
 
 _telluric_dir = ns._home + '/documents/science/spectroscopy/telluric_lines/telluric_hr_'
 
-_corquad = ns._home_+'/python/corquad/corquad.e'
+_corquad = ns._home+'/python/corquad/corquad.e'
 
 
 
@@ -435,6 +436,9 @@ if procData:
         # Correct for bad pixels and normalize all the frames by the flat field
         # will edit for multiple flats
         ir.load('crutil')
+
+        # Commented because this takes a long time
+
         ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
                       qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn),
                       cleanec=cleanec, clobber=True, verbose=verbose,
@@ -503,11 +507,11 @@ if procData:
     if processTarg:
         ns.write_exptime(rawtarg, itime=itime)
 
-        ns.preprocess('@'+rawtarg, '@'+proctarg, qfix=qfix, 
-                      qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn), 
-                      cleanec=cleanec, clobber=True, verbose=verbose,
-                      csigma=csigma, cthreshold=cthreshold, 
-                      cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix, corquad=_corquad)
+        # ns.preprocess('@'+rawtarg, '@'+proctarg, qfix=qfix, 
+        #               qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn), 
+        #               cleanec=cleanec, clobber=True, verbose=verbose,
+        #               csigma=csigma, cthreshold=cthreshold, 
+        #               cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix, corquad=_corquad)
 
         if verbose:  print "Done correcting targ frames for bad pixels and flat-fielding!"
 

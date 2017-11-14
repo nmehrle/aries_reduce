@@ -1628,7 +1628,7 @@ def preprocess(*args, **kw):
     setjd(output, date=date, time=time, jd='JD', hjd='HJD')
     if kw['qfix']:
         if 'aries' in str(kw['qfix']).lower():
-            correct_aries_crosstalk(output, clobber=clobber,corquad=corquad)
+            correct_aries_crosstalk(output, clobber=clobber,corquad=kw['corquad'])
             #ir.hedit(output, 'quadnois', \
             #         'ARIES crosstalk fixed by nsdata.correct_aries_crosstalk', add='YES', update='YES')
         else:
@@ -1682,7 +1682,7 @@ def preprocess(*args, **kw):
                     nsigma=kw['csigma'], window=kw['cwindow'], clobber=True)
 
     if verbose: print "Successfully processed '" + input + \
-            "' into '" + output + "'"
+            "' into '" + output + "'\n\n"
 
     return
 
