@@ -82,6 +82,7 @@ data = '2016oct16' #Ups And
 
 
 
+
 local = True
 
 makeDark    = False
@@ -116,12 +117,13 @@ if(not os.path.exists(_proc)):
 
 _telluric_dir = ns._home + '/documents/science/spectroscopy/telluric_lines/telluric_hr_'
 
-_corquad = ns._home+'/python/corquad/corquad.e'
+_corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
 
 
 
 # Eventually, get all initializations from initobs:
 obs = ns.initobs(data, remote=(not local), _raw=_raw, _proc=_proc)
+
 _proc  = obs['_proc']
 _raw   = obs['_raw']
 n_ap   = obs['n_aperture']  #  number of apertures (i.e., echelle orders)
@@ -152,10 +154,10 @@ if filter=='K' or filter=='H':
 elif filter=='L':
     horizsamp = "10:270 440:500 550:980"
 
-elif filter=='Karies':
+elif filter=='Karies' or filter=='OPEN5':
     horizsamp = "10:995"
 
-if filter=='Karies':
+if filter=='Karies' or filter=='OPEN5':
     observ = 'flwo'
     itime = 'exptime'
     date = 'UTSTART'
@@ -200,7 +202,7 @@ elif filter=='L':
     cthreshold=400
     rratio = 5
     rthreshold = 300
-elif filter=='Karies':
+elif filter=='Karies' or filter=='OPEN5':
     cleanec = True
     cleancr = False
     qfix = 'aries'
@@ -239,9 +241,6 @@ rawdark  = ns.strl2f(_proc+'rawdark', obs['darkfilelist'], clobber=True)
 rawflat_list  = obs['flatfilelist'] #ns.strl2f(_proc+'rawflat',  obs[10],    clobber=True)
 procflat_list = [el.replace(_raw, _proc) for el in obs['flatfilelist']]
 procflat  = ns.strl2f(_proc+'procflat', procflat_list, clobber=True)
-
-#added
-rawflat  = ns.strl2f(_raw+'rawflat', obs['flatfilelist'], clobber=True)
 
 rawcal   = ns.strl2f(_proc+'rawcal',   obs['rawcalfilelist'], clobber=True)
 proccal  = ns.strl2f(_proc+'proccal',  obs['proccalfilelist'], clobber=True)
@@ -311,7 +310,8 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     # 2008-06-04 08:42 IJC: Scale and combine the flats appropriately (as lamp is warming up, flux changes)
     # ir.imcombine("@"+procflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
 
-    ir.imcombine("@"+rawflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
+    # Makes median flat
+    ir.imcombine("@"+procflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
 
     ns.write_exptime(_sflat, itime=itime)
     print _sflat, _sdark
@@ -439,11 +439,11 @@ if procData:
 
         # Commented because this takes a long time
 
-        ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
-                      qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn),
-                      cleanec=cleanec, clobber=True, verbose=verbose,
-                      csigma=csigma, cthreshold=cthreshold,
-                      cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix, corquad=_corquad)
+        # ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
+        #               qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn),
+        #               cleanec=cleanec, clobber=True, verbose=verbose,
+        #               csigma=csigma, cthreshold=cthreshold,
+        #               cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix, corquad=_corquad)
 
         if verbose: print "Done correcting cal frames for bad pixels and flat-fielding!"
         
