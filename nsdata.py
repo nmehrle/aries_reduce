@@ -1918,8 +1918,7 @@ def readfile(fn, cols=None):
         dat = array([map(float, line.split()[cols]) for line in raw])
 
     return dat
-   
-##TODO 
+    
 def initobs(date, **kw):
     """Initialize variables for Nirspec data analysis.
 
@@ -2124,14 +2123,24 @@ def initobs(date, **kw):
 
     datalist = filelist(prefix, postfix, framelist)
 
-    darkfilelist = filelist(_raw+prefix, '.fits', darklist, numplaces=4)
-    flatfilelist = filelist(_raw+prefix, '.fits', flatlist, numplaces=4)
-    rawcalfilelist = filelist( _raw+prefix, '.fits', callist, numplaces=4)
-    proccalfilelist = filelist( _proc+prefix, 'fn', callist, numplaces=4)
-    rawtargfilelist = filelist( _raw+prefix, '.fits', framelist, numplaces=4)
+    darkfilelist     = filelist(_raw+prefix, '.fits', darklist, numplaces=4)
+    darkflatlist     = filelist(_raw+prefix, '.fits', darkflatlist, numplaces=4)
+    darkcallist      = filelist(_raw+prefix, '.fits', darkcallist, numplaces=4)
+    rawcalfilelist   = filelist( _raw+prefix, '.fits', callist, numplaces=4)
+    proccalfilelist  = filelist( _proc+prefix, 'fn', callist, numplaces=4)
+    rawtargfilelist  = filelist( _raw+prefix, '.fits', framelist, numplaces=4)
     proctargfilelist = filelist( _proc+prefix, 'fn', framelist, numplaces=4)
-    speccalfilelist = filelist(prefix, 's', callist, numplaces=4)
+    speccalfilelist  = filelist(prefix, 's', callist, numplaces=4)
     spectargfilelist = filelist(prefix, 's', framelist, numplaces=4)
+
+    # Flat Frame Handling
+    if type(flatlist) == dict:
+        flatfilelist = {}
+        for key in flatlist:
+            flatfilelist[key] = filelist(_raw+prefix, '.fits', flatlist[key], numplaces=4)
+    else:
+        flatfilelist = filelist(_raw+prefix, '.fits', flatlist, numplaces=4)
+
 
     aplist     = filelist(_proc+ap_suffix, 'fn', framelist)
     aplist_cal = filelist(_proc+ap_suffix, 'fn', callist)
@@ -2155,6 +2164,8 @@ def initobs(date, **kw):
     ret['telluric_fn']         = telluric_fn
     ret['_raw']                = _raw
     ret['darkfilelist']        = darkfilelist
+    ret['darkflatlist']        = darkflatlist
+    ret['darkcallist']         = darkcallist
     ret['flatfilelist']        = flatfilelist
     ret['rawcalfilelist']      = rawcalfilelist
     ret['proccalfilelist']     = proccalfilelist
@@ -3066,7 +3077,7 @@ def correct_aries_crosstalk(input, **kw):
         import pyfits
 
 
-    defaults = dict(corquad=os.path.expanduser('~/python/corquad/corquad.e'), clobber=False, verbose=False, output=None)
+    defaults = dict(corquad=os.path.expanduser('~/python/corquad-lunux'), clobber=False, verbose=False, output=None)
     for key in defaults:
         if (not kw.has_key(key)):
             kw[key] = defaults[key]

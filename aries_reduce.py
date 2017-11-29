@@ -80,15 +80,12 @@ data = '2016oct19' # WASP-33
 data = '2016oct20b' # WASP-33
 data = '2016oct16' #Ups And
 
-
-
-
 local = True
 
-makeDark    = False
+makeDark    = True
 makeFlat    = False
 makeMask    = False
-processCal  = True
+processCal  = False
 processTarg = False
 
 verbose = True
@@ -227,8 +224,14 @@ _sflat     = _proc + prefn + "_flat"
 _sflats    = _proc + prefn + "_flat_sig"
 _sflatdc   = _proc + prefn + "_flatd" 
 _sflatdcn  = _proc + prefn + "_flatdn" 
+
 _sdark = _proc + prefn + "_dark" 
 _sdarks = _proc + prefn + "_dark_sig"
+_sdarkflat = _proc + prefn + "_darkflat"
+_sdarkflats = _proc + prefn + "_darkflats"
+_sdarkcal  = _proc + prefn + "_darkcal"
+_sdarkcals  = _proc + prefn + "_darkcals"
+
 _mask1  = _proc + prefn + "_badpixelmask1"  + maskfn
 _mask2  = _proc + prefn + "_badpixelmask2"  + maskfn
 _mask3  = _proc + prefn + "_badpixelmask3"  + maskfn
@@ -238,6 +241,8 @@ _dmask  = _proc + prefn + "_darkpixelmask"  + postfn
 _wldat = 'ec'
 
 rawdark  = ns.strl2f(_proc+'rawdark', obs['darkfilelist'], clobber=True)
+rawdarkflat = ns.strl2f(_proc+'rawdarkflat', obs['darkflatlist'], clobber=True)
+rawdarkcal  = ns.strl2f(_proc+'rawdarkcal', obs['darkcallist'], clobber=True)
 rawflat_list  = obs['flatfilelist'] #ns.strl2f(_proc+'rawflat',  obs[10],    clobber=True)
 procflat_list = [el.replace(_raw, _proc) for el in obs['flatfilelist']]
 procflat  = ns.strl2f(_proc+'procflat', procflat_list, clobber=True)
@@ -295,11 +300,25 @@ ir.set(observatory=observ)
 if makeDark:
     ir.imdelete(_sdark)
     ir.imdelete(_sdarks)
+    ir.imdelete(_sdarkflat)
+    ir.imdelete(_sdarkflats)
+    ir.imdelete(_sdarkcal)
+    ir.imdelete(_sdarkcals)
+
         
-    print "rawdark file list>>" + rawdark
+    if verbose: print "rawdark file list >>\n" + rawdark
     ir.imcombine("@"+rawdark, output=_sdark, combine="average",reject="avsigclip", sigmas=_sdarks, scale="none", weight="none", bpmasks="")
-                    
     ns.write_exptime(_sdark, itime=itime)
+
+    if verbose: print "rawdarkflat file list >>\n" + rawdarkflat
+    ir.imcombine("@"+rawdarkflat, output=_sdarkflat, combine="average",reject="avsigclip", sigmas=_sdarkflats, scale="none", weight="none", bpmasks="")
+    ns.write_exptime(_sdarkflat, itime=itime)
+
+    if verbose: print "rawdarkcal file list >>\n" + rawdarkcal
+    ir.imcombine("@"+rawdarkcal, output=_sdarkcal, combine="average",reject="avsigclip", sigmas=_sdarkcals, scale="none", weight="none", bpmasks="")
+    ns.write_exptime(_sdarkcal, itime=itime)
+
+    if verbose: print "Done making dark frames!"
 
 if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     ir.imdelete(_sflat)
@@ -314,8 +333,8 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     ir.imcombine("@"+procflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
 
     ns.write_exptime(_sflat, itime=itime)
-    print _sflat, _sdark
-    ir.ccdproc(_sflat, output=_sflatdc, ccdtype="", fixpix="no", overscan="no",trim="no",zerocor="no",darkcor="yes",flatcor="no", dark=_sdark)
+    print _sflat, _sdarkflat
+    ir.ccdproc(_sflat, output=_sflatdc, ccdtype="", fixpix="no", overscan="no",trim="no",zerocor="no",darkcor="yes",flatcor="no", dark=_sdarkflat)
 
     if verbose: print "Done making flat frame!"
 

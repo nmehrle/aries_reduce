@@ -6,4 +6,4 @@ blahneg
 database/
 logfile
 *.todo
-
+*_summary.txt

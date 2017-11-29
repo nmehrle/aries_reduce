@@ -181,5 +181,5 @@ def collectData(path,prefix,date,headers=['object'], targObject='',output=""):
 # prefix = "spec_"
 # hoi  = ['object','filter','exptime','airmass']
 # collectData(datapath,prefix,'2016oct16', headers=hoi,targObject="UpsAnd")
-addToDb('obsdb.json')
+# addToDb('obsdb.json')
 
