@@ -82,9 +82,10 @@ data = '2016oct16' #Ups And
 
 local = True
 
-makeDark    = True
+makeDark    = False
 makeFlat    = False
 makeMask    = False
+preprocess  = False
 processCal  = False
 processTarg = False
 
@@ -445,9 +446,6 @@ if procData:
     ir.chdir(_proc)
 
     if processCal:
-        
-
-
         # Add 'exptime' header to all cal, target, and lamp files:
         ns.write_exptime(rawcal, itime=itime)
         #ns.write_exptime(rawlamp)
@@ -456,15 +454,16 @@ if procData:
         # will edit for multiple flats
         ir.load('crutil')
 
-        # Commented because this takes a long time
+        if preprocess:
+          ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
+                        qpref='', flat=_sflatdcn, dark=_sdarkcal,
+                        mask=_mask.replace(maskfn, postfn),
+                        cleanec=cleanec, clobber=True, verbose=verbose,
+                        csigma=csigma, cthreshold=cthreshold,
+                        cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
+                        date=date, time=time, dofix=dofix, corquad=_corquad)
 
-        # ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
-        #               qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn),
-        #               cleanec=cleanec, clobber=True, verbose=verbose,
-        #               csigma=csigma, cthreshold=cthreshold,
-        #               cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix, corquad=_corquad)
-
-        if verbose: print "Done correcting cal frames for bad pixels and flat-fielding!"
+        if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
         
         # Extract raw spectral data from the echelle images
         ir.imdelete('@'+speccal)
@@ -526,13 +525,16 @@ if procData:
     if processTarg:
         ns.write_exptime(rawtarg, itime=itime)
 
-        # ns.preprocess('@'+rawtarg, '@'+proctarg, qfix=qfix, 
-        #               qpref='', flat=_sflatdcn, mask=_mask.replace(maskfn, postfn), 
-        #               cleanec=cleanec, clobber=True, verbose=verbose,
-        #               csigma=csigma, cthreshold=cthreshold, 
-        #               cleancr=cleancr, rthreshold=rthreshold, rratio=rratio, date=date, time=time, dofix=dofix, corquad=_corquad)
+        if preprocess:
+          ns.preprocess('@'+rawtarg, '@'+proctarg, qfix=qfix,
+                        qpref='', flat=_sflatdcn, dark=_sdark,
+                        mask=_mask.replace(maskfn, postfn),
+                        cleanec=cleanec, clobber=True, verbose=verbose,
+                        csigma=csigma, cthreshold=cthreshold,
+                        cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
+                        date=date, time=time, dofix=dofix, corquad=_corquad)
 
-        if verbose:  print "Done correcting targ frames for bad pixels and flat-fielding!"
+        if verbose:  print "Done correcting targ frames for bad pixels, dark-correcting, and flat-fielding!"
 
         ir.imdelete('@'+spectarg)
         ir.apall('@'+proctarg, output='@'+spectarg, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')

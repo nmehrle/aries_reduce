@@ -1495,6 +1495,8 @@ def preprocess(*args, **kw):
 
          flat    = None -- flat field for iraf.ccdproc
 
+         dark    = None -- dark frame for iraf.ccdproc
+
          mask    = None -- bad pixel mask for iraf.ccdproc
 
          clobber = False -- overwrite file if input and output files are same
@@ -1555,7 +1557,7 @@ def preprocess(*args, **kw):
             print "Input and output files must not be the same! Exiting..."
             return
 
-    defaults = dict(qfix=False, qpref='', flat=None, mask=None, \
+    defaults = dict(qfix=False, qpref='', flat=None, dark=None, mask=None, \
                         cleanec=False, clobber=False, verbose=False, \
                         cthreshold=300, cwindow=25, csigma=20, \
                         cleancr=False, rthreshold=300, rratio=5, \
@@ -1567,6 +1569,7 @@ def preprocess(*args, **kw):
 
     verbose = bool(kw['verbose'])
     doflat = kw['flat']!=None
+    doDark = kw['dark']!=None
     dobfix = kw['mask']!=None
     clobber = bool(kw['clobber'])
     date = kw['date']
@@ -1575,6 +1578,11 @@ def preprocess(*args, **kw):
     if doflat:
         if not os.path.isfile(kw['flat']):
             kw['flat'] = kw['flat'] + '.fits'
+            if not os.path.isfile(kw['flat']):
+                raise IOError("File " + kw['flat'] + " not found")
+    if doDark:
+        if not os.path.isfile(kw['dark']):
+            kw['dark'] = kw['dark'] + '.fits'
             if not os.path.isfile(kw['flat']):
                 raise IOError("File " + kw['flat'] + " not found")
     
@@ -1636,11 +1644,14 @@ def preprocess(*args, **kw):
             ir.hedit(output, 'quadnois', \
                      'NIRSPEC bad row fixed by nsdata.fix_quadnoise', add=True, update='yes')
     
-    if doflat:
+    if doflat or doDark:
+
+
         ir.ccdproc(output, ccdtype="", fixpix="no", overscan="no",
-                   trim="no", zerocor="no", darkcor="no", flatcor=doflat, 
-                   flat=kw['flat'], fixfile=None,
-                   minreplace=0.25, interactive="no")
+                    trim="no", zerocor="no",
+                    flatcor=doflat,   flat=kw['flat'],
+                    darkcor = doDark, dark=kw['dark'],
+                    fixfile=None, minreplace=0.25, interactive="no")
 
     if dobfix: 
         # Make an extra bad-pixel mask from any _negative_ values, and
@@ -2741,6 +2752,13 @@ def envMet(filename, tz=-10, planet=None, date=None, ignore='***'):
 def darkbpmap(filelist, clipsigma=5, sigma=25, writeto=None, clobber=False, verbose=False, outtype=int, filtwid=9):
     """Use dark frames to construct a bad pixel map based on unusually
        variable pixels.
+
+      Marks pixels as bad according to 3 criteria:
+      1 - pixels whose (outlier subtracted) std-dev is [sigma] sigmas from typical pixel (outlier subtracted) std-dev
+        i.e. pixels which have particularly high/low variance
+      2 - pixels which dont vary (in outlier subtraced sense)
+      3 - pixel's whose value is [SIGMA] sigma discrepent from their neighbors
+        i.e. pixels which are discrepent from neighbors
 
     :INPUT:
         filelist: str, list, or 3D numpy array -- dark frame filenames or data
