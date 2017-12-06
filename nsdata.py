@@ -2148,9 +2148,9 @@ def initobs(date, **kw):
     if type(flatlist) == dict:
         flatfilelist = {}
         for key in flatlist:
-            flatfilelist[key] = filelist(_raw+prefix, '.fits', flatlist[key], numplaces=4)
+            flatfilelist[key] = filelist(str(_raw+prefix), '.fits', flatlist[key], numplaces=4)
     else:
-        flatfilelist = filelist(_raw+prefix, '.fits', flatlist, numplaces=4)
+        flatfilelist = filelist(str(_raw+prefix), '.fits', flatlist, numplaces=4)
 
 
     aplist     = filelist(_proc+ap_suffix, 'fn', framelist)
@@ -3095,7 +3095,7 @@ def correct_aries_crosstalk(input, **kw):
         import pyfits
 
 
-    defaults = dict(corquad=os.path.expanduser('~/python/corquad-lunux'), clobber=False, verbose=False, output=None)
+    defaults = dict(corquad=os.path.expanduser('~/python/corquad-linux'), clobber=False, verbose=False, output=None)
     for key in defaults:
         if (not kw.has_key(key)):
             kw[key] = defaults[key]
@@ -3116,12 +3116,14 @@ def correct_aries_crosstalk(input, **kw):
     if input.__class__!=output.__class__:
         print "Files or file lists must be of same type.  Exiting..."
         return
+    # Calls this function on each file in list
     elif input.__class__==list:
         for ii in range(len(input)):
             if verbose: print "File list, file:  " + input[ii]
             kw['output'] = output[ii]
             correct_aries_crosstalk(input[ii], **kw)
         return
+    # Calls this function on each file in @string
     elif (input.__class__==str) and (input[0]=='@'):
         fin  = open(input[ 1::])
         fout = open(output[1::])
@@ -3157,10 +3159,9 @@ def correct_aries_crosstalk(input, **kw):
         print "WARNING, did not find expected file 'q%s'. corquad might have failed." % input_filename
     if not os.path.isfile(output):
         print "WARNING, did not find expected output file '%s'. Something went wrong!" % output
-
     pyhdr = pyfits.open(output)
     pyhdr[0].header['quadnois'] = 'ARIES crosstalk fixed by nsdata.correct_aries_crosstalk'
-    pyhdr.writeto(output, clobber=True, output_verify='fix')
+    pyhdr.writeto(output, clobber=True, output_verify='silentfix')
     os.chdir(dir0)
     return
 

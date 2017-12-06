@@ -84,13 +84,14 @@ local = True
 
 makeDark    = False
 makeFlat    = False
-makeMask    = False
+makeMask    = True
 preprocess  = False
 processCal  = False
 processTarg = False
 
 verbose = True
 interactive = True
+irafaplatten = True #Use iraf.aplatten to flatten blaze fn
 
 dispersion = 0.075  # Resampled dispersion, in angstroms per pixel (approximate)
 
@@ -244,9 +245,37 @@ _wldat = 'ec'
 rawdark  = ns.strl2f(_proc+'rawdark', obs['darkfilelist'], clobber=True)
 rawdarkflat = ns.strl2f(_proc+'rawdarkflat', obs['darkflatlist'], clobber=True)
 rawdarkcal  = ns.strl2f(_proc+'rawdarkcal', obs['darkcallist'], clobber=True)
-rawflat_list  = obs['flatfilelist'] #ns.strl2f(_proc+'rawflat',  obs[10],    clobber=True)
-procflat_list = [el.replace(_raw, _proc) for el in obs['flatfilelist']]
+
+rawflat_list = []
+rawflat_dict = None
+if type(obs['flatfilelist']) == dict:
+    rawflat_dict = obs['flatfilelist']
+    rawflat_list = [item for sublist in obs['flatfilelist'].values() for item in sublist]
+    rawflat_list.sort()
+else:
+    rawflat_list = obs['flatfilelist']
+
+flats_as_dict = rawflat_dict!=None
+
+procflat_list = [el.replace(_raw, _proc) for el in rawflat_list]
 procflat  = ns.strl2f(_proc+'procflat', procflat_list, clobber=True)
+
+if flats_as_dict:
+    procflat_dict     = {}
+    procflatfile_dict = {}
+    _sflat_dict        = {}
+    _sflats_dict       = {}
+    _sflatdc_dict      = {}
+    _sflatdcn_dict     = {}
+
+
+    for key in rawflat_dict.keys():
+        procflat_dict[key] = [el.replace(_raw, _proc) for el in rawflat_dict[key]]
+        procflatfile_dict[key] = ns.strl2f(_proc+'procflat_'+key, procflat_dict[key], clobber=True)
+        _sflat_dict[key]    = _sflat    + '_' + key
+        _sflats_dict[key]   = _sflats   + '_' + key
+        _sflatdc_dict[key]  = _sflatdc  + '_' + key
+        _sflatdcn_dict[key] = _sflatdcn + '_' + key
 
 rawcal   = ns.strl2f(_proc+'rawcal',   obs['rawcalfilelist'], clobber=True)
 proccal  = ns.strl2f(_proc+'proccal',  obs['proccalfilelist'], clobber=True)
@@ -322,68 +351,116 @@ if makeDark:
     if verbose: print "Done making dark frames!"
 
 if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
+    if verbose: 
+        print "Making flat frames"
+        print "----------------------------------------"
+        print "----------------------------------------"
+        print "----------------------------------------"
     ir.imdelete(_sflat)
-    ##ir.imdelete(_sflats)
+    # ir.imdelete(_sflats)
     ir.imdelete(_sflatdc)
-    #ns.correct_aries_crosstalk("@"+_proc +'rawflat', output='@'+_proc + 'procflat')
-    ns.correct_aries_crosstalk(rawflat_list, output=procflat_list, corquad=_corquad)
-    # 2008-06-04 08:42 IJC: Scale and combine the flats appropriately (as lamp is warming up, flux changes)
-    # ir.imcombine("@"+procflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
-
-    # Makes median flat
-    ir.imcombine("@"+procflat, output=_sflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=_sflats
-
-    ns.write_exptime(_sflat, itime=itime)
-    print _sflat, _sdarkflat
-    ir.ccdproc(_sflat, output=_sflatdc, ccdtype="", fixpix="no", overscan="no",trim="no",zerocor="no",darkcor="yes",flatcor="no", dark=_sdarkflat)
-
-    if verbose: print "Done making flat frame!"
+    ir.imdelete(_sflatdc+'big')
 
     ir.imdelete(_sflatdcn)
     ir.imdelete(_sflatdcn+'big')
-    
-    # ------------------------------------
-    # Do some FITS-file gymnastics to allow all 6 orders to be traced
-    # ------------------------------------
-    flatdat = pyfits.getdata(  _sflatdc+postfn)
-    flathdr = pyfits.getheader(_sflatdc+postfn)
-    
-    n_big = 1400
-    pad = (n_big-1024)/2
-    bigflat = ny.zeros([n_big,1024])
-    
-    bigflat[pad:(pad+1024),:] = flatdat
-    pyfits.writeto(_sflatdc+'big'+postfn, bigflat, flathdr, clobber=True, output_verify='warn')
-    # Create normalized flat frame (remove continuum lamp profile)    
-    # ir.apnorm1.background = ")apnormalize.background"
-    # ir.apnorm1.skybox = ")apnormalize.skybox"
-    # ir.apnorm1.weights = ")apnormalize.weights"
-    # ir.apnorm1.pfit = ")apnormalize.pfit"
-    # ir.apnorm1.saturation = ")apnormalize.saturation"
-    # ir.apnorm1.readnoise = ")apnormalize.readnoise"
-    # ir.apnorm1.gain = ")apnormalize.gain"
-    # ir.apnorm1.lsigma = ")apnormalize.lsigma"
-    # ir.apnorm1.usigma = ")apnormalize.usigma"
-    # ir.apnorm1.clean = ")apnormalize.clean"
 
-    if True: # the old, IRAF way:
-        #ir.apnormalize(_sflatdc+'big', _sflatdcn+'big', sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes', cennorm='no', recenter='yes', resize='yes', edit='yes', trace='yes', weights='variance', fittrace='yes', interactive=interactive, background='fit', order=3)
-        ir.apflatten(_sflatdc+'big', _sflatdcn+'big', sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes',  recenter='yes', resize='yes', edit='yes', trace='yes', fittrace='yes', interactive=interactive, order=3)
+    if flats_as_dict:
+        for angle in _sflat_dict.keys():
+            ir.imdelete(_sflat_dict[angle])
+            # ir.imdelete(_sflatsdict[angle])
 
+            ir.imdelete(_sflatdc_dict[angle])
+            ir.imdelete(_sflatdc_dict[angle]+'big')
+
+            ir.imdelete(_sflatdcn_dict[angle])
+            ir.imdelete(_sflatdcn_dict[angle]+'big')
+
+    # Correct for dectector crosstalk
+    if verbose: 
+
+        print 'Correcting aries crosstalk'
+        print "----------------------------------------"
+
+
+    ns.correct_aries_crosstalk(rawflat_list, output=procflat_list, corquad=_corquad)
+
+    if verbose: 
+        print "----------------------------------------"
+        print 'Done correcting aries crosstalk'
+
+    # 2008-06-04 08:42 IJC: Scale and combine the flats appropriately (as lamp is warming up, flux changes)
+
+    # Makes median flat(s)
+    if verbose: 
+        print "Combining flat fields"
+        print "----------------------------------------"
+    def combineflats(inflats, outflat, outflatdc, darkflat,flat_sigmas=None):
+        ir.imcombine("@"+inflats,output=outflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=flat_sigmas
+        ns.write_exptime(outflat, itime=itime)
+
+        ir.ccdproc(outflat, output=outflatdc, ccdtype="", fixpix="no", overscan="no",trim="no",zerocor="no",darkcor="yes",flatcor="no", dark=darkflat)
+    combineflats(procflat, _sflat, _sflatdc, _sdarkflat) #flat_sigmas = _sflats
+
+    if flats_as_dict:
+        for angle, flatlist in procflatfile_dict.items():
+            combineflats(flatlist, _sflat_dict[angle], _sflatdc_dict[angle],_sdarkflat) #flat_sigmas = _sflats_dict[angle]
+
+    if verbose: 
+        print "----------------------------------------"
+        print "Done Combining flat frame(s)!"
+
+    # Corrects blaze function (Flattens flat frames)
+    if verbose: 
+        print "Correcting for flat field blaze functions"
+        print "----------------------------------------"
+
+    def correctblazefn(inflat, outflat):
+        #Create padded file to get aperatures on edges
+        flatdat = pyfits.getdata(  inflat+postfn)
+        flathdr = pyfits.getheader(inflat+postfn)
+
+        n_big = 1400
+        n_base = flatdat.shape[0]
+        pad = (n_big-n_base)/2
+        bigflat = ny.zeros([n_big,n_base])
+
+        bigflat[pad:(pad+n_base),:] = flatdat
+        pyfits.writeto(inflat+'big'+postfn, bigflat, flathdr, overwrite=True, output_verify='warn')
+
+        # Flatten Iraf or otherwise
+        if irafaplatten:
+            ir.apflatten(inflat+'big', outflat+'big', sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes',  recenter='yes', resize='yes', edit='yes', trace='yes', fittrace='yes', interactive=interactive, order=3)
+        else:
+            mudflat = pyfits.getdata(inflat + 'big.fits')
+            mudhdr = pyfits.getheader(inflat + 'big.fits')
+            trace = spec.traceorders(inflat + 'big.fits', pord=2, nord=ir.aptrace.order, g=gain, rn=readnoise, fitwidth=100)
+            normflat = spec.normalizeSpecFlat(mudflat*gain, nspec=ir.aptrace.order, traces=trace)
+            pyfits.writeto(outflat + 'big.fits', normflat, header=mudhdr, output_verify='warn')
+
+        # Remove Padding
+        normflatdat = pyfits.getdata(  outflat+'big'+postfn)
+        normflathdr = pyfits.getheader(outflat+'big'+postfn)
+        smallnormflat = normflatdat[pad:(pad+n_base),:]
+        smallnormflat[smallnormflat==0] = 1.
+        pyfits.writeto(outflat+postfn, smallnormflat, normflathdr, overwrite=True, output_verify='warn')
+
+    #apply correction to each dc flat
+    #if flats come as a dict, don't correct the overall (no angle dependence) flat
+    if flats_as_dict:
+        for angle,dc_flat in _sflatdc_dict.items():
+            correctblazefn(dc_flat, _sflatdcn_dict[angle])
     else:
-        mudflat = pyfits.getdata(_sflatdc + 'big.fits')
-        mudhdr = pyfits.getheader(_sflatdc + 'big.fits')
-        trace = spec.traceorders(_sflatdc + 'big.fits', pord=2, nord=ir.aptrace.order, g=gain, rn=readnoise, fitwidth=100)
-        normflat = spec.normalizeSpecFlat(mudflat*gain, nspec=ir.aptrace.order, traces=trace)
-        pyfits.writeto(_sflatdcn + 'big.fits', normflat, header=mudhdr, output_verify='warn')
+        correctblazefn(_sflatdc, _sflatdcn)
 
-    normflatdat = pyfits.getdata(  _sflatdcn+'big'+postfn)
-    normflathdr = pyfits.getheader(_sflatdcn+'big'+postfn)
-    smallnormflat = normflatdat[pad:(pad+1024),:]
-    smallnormflat[smallnormflat==0] = 1.
-    pyfits.writeto(_sflatdcn+postfn, smallnormflat, normflathdr, clobber=True, output_verify='warn')
+    if verbose:
+        print "----------------------------------------"
+        print "Done Correcting for blaze fn"
 
-    if verbose: print "Done making dark flat frame!"
+    if verbose:
+        print "----------------------------------------"
+        print "----------------------------------------"
+        print "----------------------------------------"
+        print "Done making flat frame(s)!"
 
 if makeMask:  
     if verbose:
