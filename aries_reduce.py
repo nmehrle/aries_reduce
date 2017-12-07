@@ -84,9 +84,9 @@ local = True
 
 makeDark    = False
 makeFlat    = False
-makeMask    = True
-preprocess  = False
-processCal  = False
+makeMask    = False
+preprocess  = True
+processCal  = True
 processTarg = False
 
 verbose = True
@@ -111,8 +111,19 @@ if(not os.path.exists(_raw)):
   raise IOError('No such file or directory '+_raw+'. Update _raw to point to directory containing raw data.')
 
 _proc = ns._home + "/documents/science/spectroscopy/" + data +"/proc/"
-if(not os.path.exists(_proc)):
+
+# If interactive and _proc doesn't exist, attempt to create it
+if interactive and not os.path.exists(_proc):
+  print 'Attempting to create processed data directory at: \n'+_proc
+  print 'Input "yes" to allow directory creation.'
+  _proc_input = raw_input()
+  if _proc_input.lower() == 'yes':
+    os.makedirs(_proc)
+
+# If proc still doesn't exist, abort
+if not os.path.exists(_proc):
   raise IOError('No such file or directory '+_proc+'. Update _proc to point to processed data directory.')
+
 
 _telluric_dir = ns._home + '/documents/science/spectroscopy/telluric_lines/telluric_hr_'
 
@@ -532,8 +543,11 @@ if procData:
         ir.load('crutil')
 
         if preprocess:
+          flat_for_proc = _sflatdcn
+          if flats_as_dict: flat_for_proc = _sflatdcn_dict
+          print flat_for_proc
           ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
-                        qpref='', flat=_sflatdcn, dark=_sdarkcal,
+                        qpref='', flat=flat_for_proc, dark=_sdarkcal,
                         mask=_mask.replace(maskfn, postfn),
                         cleanec=cleanec, clobber=True, verbose=verbose,
                         csigma=csigma, cthreshold=cthreshold,
@@ -541,7 +555,6 @@ if procData:
                         date=date, time=time, dofix=dofix, corquad=_corquad)
 
         if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
-        
         # Extract raw spectral data from the echelle images
         ir.imdelete('@'+speccal)
         ir.apall('@'+proccal, output='@'+speccal, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, weights='variance', bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')
@@ -603,8 +616,11 @@ if procData:
         ns.write_exptime(rawtarg, itime=itime)
 
         if preprocess:
+          flat_for_proc = _sflatdcn
+          if flats_as_dict: flat_for_proc = _sflatdcn_dict
+
           ns.preprocess('@'+rawtarg, '@'+proctarg, qfix=qfix,
-                        qpref='', flat=_sflatdcn, dark=_sdark,
+                        qpref='', flat=flat_for_proc, dark=_sdark,
                         mask=_mask.replace(maskfn, postfn),
                         cleanec=cleanec, clobber=True, verbose=verbose,
                         csigma=csigma, cthreshold=cthreshold,
