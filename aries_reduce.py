@@ -545,7 +545,7 @@ if procData:
         if preprocess:
           flat_for_proc = _sflatdcn
           if flats_as_dict: flat_for_proc = _sflatdcn_dict
-          print flat_for_proc
+          
           ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
                         qpref='', flat=flat_for_proc, dark=_sdarkcal,
                         mask=_mask.replace(maskfn, postfn),
