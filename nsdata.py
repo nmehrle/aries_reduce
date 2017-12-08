@@ -89,9 +89,8 @@ def filelist(prefix, postfix, numlist, numplaces=4):
     #2008-07-21 10:24 IJC: Updated to use list instead of start/end num.
     
     fnlist = []
-
     for element in numlist:
-        fnlist = fnlist + [prefix + intstr(element, numplaces) + postfix]
+        fnlist = fnlist + [str(prefix + intstr(element, numplaces) + postfix)]
 
     return fnlist
 
@@ -1494,6 +1493,8 @@ def preprocess(*args, **kw):
            qpref = '' -- string to preface all quad-fixed frames
 
          flat    = None -- flat field for iraf.ccdproc
+                        -- could be either string or dict of strings
+                        -- dictionary keys are interpreted as altitude angle
 
          dark    = None -- dark frame for iraf.ccdproc
 
@@ -1516,6 +1517,8 @@ def preprocess(*args, **kw):
              rratio = 5 -- fluxratio threshold for iraf.cosmicrays
 
           corquad = "" -- (str) path to corquad executable
+
+          airmass = 'AIRMASS' -- (str) fits airmass keyword
 
          Any inputs set to 'None' disable that part of the processing.
 
@@ -1561,7 +1564,7 @@ def preprocess(*args, **kw):
                         cleanec=False, clobber=False, verbose=False, \
                         cthreshold=300, cwindow=25, csigma=20, \
                         cleancr=False, rthreshold=300, rratio=5, \
-                    date='date-obs', time='UTC', dofix=True, corquad="")
+                    date='date-obs', time='UTC', dofix=True, corquad="", airmass='AIRMASS')
 
     for key in defaults:
         if (not kw.has_key(key)):
@@ -1576,15 +1579,25 @@ def preprocess(*args, **kw):
     time = kw['time']
 
     if doflat:
-        if not os.path.isfile(kw['flat']):
-            kw['flat'] = kw['flat'] + '.fits'
+        if(type(kw['flat']) == dict):
+            for angle in kw['flat'].keys():
+                if type(kw['flat'][angle]) != str and type(kw['flat'][angle])!= unicode:
+                    raise IOError("Flat kw input must be either a string or a dictionary of strings")
+                else:
+                    if not os.path.isfile(kw['flat'][angle]):
+                        kw['flat'][angle] = kw['flat'][angle]+'.fits'
+                        if not os.path.isfile(kw['flat'][angle]):
+                            raise IOError("File "+ kw['flat'][angle] + " not found")
+        else:
             if not os.path.isfile(kw['flat']):
-                raise IOError("File " + kw['flat'] + " not found")
+                kw['flat'] = kw['flat'] + '.fits'
+                if not os.path.isfile(kw['flat']):
+                    raise IOError("File " + kw['flat'] + " not found")
     if doDark:
         if not os.path.isfile(kw['dark']):
             kw['dark'] = kw['dark'] + '.fits'
-            if not os.path.isfile(kw['flat']):
-                raise IOError("File " + kw['flat'] + " not found")
+            if not os.path.isfile(kw['dark']):
+                raise IOError("File " + kw['dark'] + " not found")
     
     if verbose: print "Keywords are:  "; print kw
 
@@ -1643,16 +1656,31 @@ def preprocess(*args, **kw):
             fix_quadnoise(output, prefix=kw['qpref'],clobber=clobber)
             ir.hedit(output, 'quadnois', \
                      'NIRSPEC bad row fixed by nsdata.fix_quadnoise', add=True, update='yes')
-    
+
     if doflat or doDark:
+        if doflat and type(kw['flat']) == dict:
+            airmass = hdulist[0].header[kw['airmass']]
+            altitude = convertAirmassToAltitude(airmass)
+            gen_hdr, gen_data = interpolateFlatFrameFromAngle(kw['flat'],altitude)
+            gen_flat = os.path.split(output)[0]+'/generated_flat.fits'
+
+            pyfits.writeto(gen_flat,gen_data,gen_hdr,output_verify='warn',overwrite='True')
 
 
-        ir.ccdproc(output, ccdtype="", fixpix="no", overscan="no",
+            ir.ccdproc(output, ccdtype="", fixpix="no", overscan="no",
+                    trim="no", zerocor="no",
+                    flatcor=doflat,   flat=gen_flat,
+                    darkcor = doDark, dark=kw['dark'],
+                    fixfile=None, minreplace=0.25, interactive="no")
+
+            ir.imdelete(gen_flat)
+
+        else:
+            ir.ccdproc(output, ccdtype="", fixpix="no", overscan="no",
                     trim="no", zerocor="no",
                     flatcor=doflat,   flat=kw['flat'],
                     darkcor = doDark, dark=kw['dark'],
                     fixfile=None, minreplace=0.25, interactive="no")
-
     if dobfix: 
         # Make an extra bad-pixel mask from any _negative_ values, and
         # combine it with the global bad-pixel mask; necessary because
@@ -1696,6 +1724,98 @@ def preprocess(*args, **kw):
             "' into '" + output + "'\n\n"
 
     return
+
+def interpolateFlatFrameFromAngle(allflats, altitude):
+    """ Generates flat field frame for a given altitude from dict of
+        {altitude: flat_file}
+
+        :INPUTS:
+            allflats --- (dict) dictionary of {altitude: flat_file}
+                     --- altitude- altitude angle for respective flat
+                     --- flat_file- path to flat_file.fits
+                     --- limited to integer angles
+
+            altitude --- (float) altitude angle to generate flat field for
+
+        :OUTPUTS:
+            outhdr  --- (dict) header for generated flat frame
+            outdat  --- (2d array) data for generated flat frame
+    """
+
+    from bisect import bisect
+    try:
+        from astropy.io import fits as pyfits
+    except:
+        import pyfits
+
+    angles = [int(k) for k in allflats.keys()]
+    angles.sort()
+
+    upperIndex = bisect(angles,altitude)
+    flat_files = []
+    weights    = []
+
+
+    #Which flats to use
+    if(upperIndex == len(angles)):
+        # Higher than highest angle - return max
+        flat_files = [allflats[str(angles[-1])]]
+        weights    = [1]
+    elif (upperIndex == 0):
+        # Lower than lowest angle - return min
+        flat_files = [allflats[str(angles[0])]]
+        weights    = [1]
+    else:
+        upperAngle = angles[upperIndex]
+        lowerAngle = angles[upperIndex-1]
+
+        score = (upperAngle - altitude)/(upperAngle - lowerAngle)
+
+        flat_files = [allflats[str(upperAngle)],allflats[str(lowerAngle)]]
+        weights    = [score, 1-score]
+
+
+    #verifying flats are real
+    for i in range(len(flat_files)):
+        if not os.path.isfile(flat_files[i]):
+            flat_files[i] = flat_files[i]+'.fits'
+            if not os.path.isfile(flat_files[i]):
+                raise IOError("File "+ flat_files[i] + " not found")
+
+    flathdrs = [pyfits.getheader(file) for file in flat_files]
+    flatdats = [pyfits.getdata(file) for file in flat_files]
+
+    #combine the data:
+    outdat = np.median(flatdats,0)
+    outhdr = flathdrs[0]
+    outhdr['OBJECT0'] = flathdrs[0]['OBJECT']
+    outhdr['WEIGHT0'] = weights[0]
+    if len(flathdrs)>1:
+        for ind,hdr in ennumerate(flathdrs[1:]):
+            outhdr['OBJECT'+str(ind+1)] = hdr['OBJECT']
+            outhdr['WEIGHT'+str(ind+1)] = weights[ind+1]
+            for k,v in hdr.items():
+                if not k in outhdr:
+                    continue
+                else:
+                    if v != outhdr[k]:
+                        outhdr.pop(k,None)
+    outhdr['OBJECT']   = 'Interpolated Flat Frame'
+    outhdr['ALTITUDE'] = altitude
+
+    return outhdr, outdat
+
+def convertAirmassToAltitude(airmass):
+    """ Converts given airmass to altitude
+
+    :INPUTS:
+        airmass -- (float) airmass of observation
+    :OUTPUTS:
+        altitude -- (float) telescopes altitude
+                 -- altitude is angle above horizon
+    """
+
+    return 90 - (np.arccos(1/airmass)*180/np.pi)
 
 def setjd(filename, **kw):
     """Set JD and HJD fields in a FITS file, based on the UTC date and
@@ -2148,10 +2268,9 @@ def initobs(date, **kw):
     if type(flatlist) == dict:
         flatfilelist = {}
         for key in flatlist:
-            flatfilelist[key] = filelist(str(_raw+prefix), '.fits', flatlist[key], numplaces=4)
+            flatfilelist[str(key)] = filelist(_raw+prefix, '.fits', flatlist[key], numplaces=4)
     else:
-        flatfilelist = filelist(str(_raw+prefix), '.fits', flatlist, numplaces=4)
-
+        flatfilelist = filelist(_raw+prefix, '.fits', flatlist, numplaces=4)
 
     aplist     = filelist(_proc+ap_suffix, 'fn', framelist)
     aplist_cal = filelist(_proc+ap_suffix, 'fn', callist)
