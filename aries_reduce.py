@@ -82,16 +82,16 @@ data = '2016oct16' #Ups And
 
 local = True
 
-makeDark    = False
-makeFlat    = False
-makeMask    = False
+makeDark    = True
+makeFlat    = True
+makeMask    = True
 preprocess  = True
 processCal  = True
-processTarg = False
+processTarg = True
 
 verbose = True
 interactive = True
-irafaplatten = True #Use iraf.aplatten to flatten blaze fn
+irafapflatten = True #Use iraf.apflatten to flatten blaze fn
 
 dispersion = 0.075  # Resampled dispersion, in angstroms per pixel (approximate)
 
@@ -107,11 +107,14 @@ else:
 
 # User Specific Directories
 _raw  = ns._home + "/documents/science/spectroscopy/" + data +"/raw/"
+_proc = ns._home + "/documents/science/spectroscopy/" + data +"/proc/"
+_telluric_dir = ns._home + '/documents/science/spectroscopy/telluric_lines/telluric_hr_'
+_corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
+
+
+# Check if _raw exists
 if(not os.path.exists(_raw)):
   raise IOError('No such file or directory '+_raw+'. Update _raw to point to directory containing raw data.')
-
-_proc = ns._home + "/documents/science/spectroscopy/" + data +"/proc/"
-
 # If interactive and _proc doesn't exist, attempt to create it
 if interactive and not os.path.exists(_proc):
   print 'Attempting to create processed data directory at: \n'+_proc
@@ -119,16 +122,9 @@ if interactive and not os.path.exists(_proc):
   _proc_input = raw_input()
   if _proc_input.lower() == 'yes':
     os.makedirs(_proc)
-
 # If proc still doesn't exist, abort
 if not os.path.exists(_proc):
   raise IOError('No such file or directory '+_proc+'. Update _proc to point to processed data directory.')
-
-
-_telluric_dir = ns._home + '/documents/science/spectroscopy/telluric_lines/telluric_hr_'
-
-_corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
-
 
 
 # Eventually, get all initializations from initobs:
@@ -155,7 +151,7 @@ ir.load('twodspec')
 ir.load('apextract')
 
 telluric_list = _telluric_dir + filter + '.dat'
-if(not os.path.exists(telluric_list)):
+if(not os.path.exists(telluric_list) and processCal):
   raise IOError('No such file or directory '+telluric_list+'. Update _telluric_dir to point directory with telluric line list for '+filter+' filter.')
 
 if filter=='K' or filter=='H':
@@ -266,6 +262,7 @@ if type(obs['flatfilelist']) == dict:
 else:
     rawflat_list = obs['flatfilelist']
 
+
 flats_as_dict = rawflat_dict!=None
 
 procflat_list = [el.replace(_raw, _proc) for el in rawflat_list]
@@ -297,7 +294,7 @@ spectarg = ns.strl2f(_proc+'spectarg', obs['spectargfilelist'], clobber=True)
 
 meancal  =  prefn + 'avgcal'
 
-# ir.unlearn('ccdproc')
+ir.unlearn('ccdproc')
 ir.unlearn('imcombine')
 ir.unlearn('echelle')
 
@@ -410,8 +407,10 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
         ns.write_exptime(outflat, itime=itime)
 
         ir.ccdproc(outflat, output=outflatdc, ccdtype="", fixpix="no", overscan="no",trim="no",zerocor="no",darkcor="yes",flatcor="no", dark=darkflat)
+    #master flat
     combineflats(procflat, _sflat, _sflatdc, _sdarkflat) #flat_sigmas = _sflats
 
+    #angle dependent flats
     if flats_as_dict:
         for angle, flatlist in procflatfile_dict.items():
             combineflats(flatlist, _sflat_dict[angle], _sflatdc_dict[angle],_sdarkflat) #flat_sigmas = _sflats_dict[angle]
@@ -439,7 +438,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
         pyfits.writeto(inflat+'big'+postfn, bigflat, flathdr, overwrite=True, output_verify='warn')
 
         # Flatten Iraf or otherwise
-        if irafaplatten:
+        if irafapflatten:
             ir.apflatten(inflat+'big', outflat+'big', sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes',  recenter='yes', resize='yes', edit='yes', trace='yes', fittrace='yes', interactive=interactive, order=3)
         else:
             mudflat = pyfits.getdata(inflat + 'big.fits')
@@ -494,7 +493,7 @@ if makeMask:
     #ir.cosmicrays(_sflatdc, 'blah', crmasks=_mask1, threshold=750, npasses=7q
     #  , \
     #                  interactive=False) #interactive)
-    ns.cleanec(_sflatdc, 'blah', npasses=5, clobber=True, badmask=_mask1.replace(maskfn, postfn), verbose=True)
+    ns.cleanec(_sflatdc, 'blah', npasses=5, clobber=True, badmask=_mask1.replace(maskfn, postfn), verbose=verbose)
     #ir.imcopy(_mask1, _mask1.replace(maskfn, postfn))
     #pyfits.writeto(_mask1, ny.zeros(pyfits.getdata(_sflatdc+postfn).shape, dtype=int), clobber=True)
     pyfits.writeto(_sflatdc+'neg', 0. - pyfits.getdata(_sflatdc+postfn), clobber=True)
@@ -679,8 +678,7 @@ if procData:
         _telluric = ''
         while (not os.path.isfile(_telluric)) and _telluric!='q':
             temp = os.listdir('.')
-            print('\n\nEnter the telluric filename (q to quit); path is unnecessary if\n '
-                  ' you saved it in the processed-data directory.  Local possibilities:')
+            print '\n\nEnter the telluric filename (q to quit); path is unnecessary if\n you saved it in the processed-data directory.  Local possibilities:'
             for element in temp:
                 if element.find('tellspec')>-1: print element
             _telluric = raw_input('Filename:   ')

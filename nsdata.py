@@ -2148,7 +2148,6 @@ def initobs(date, **kw):
     else:
         raise KeyError('Given date, '+date+' not found')
 
-    #TODO: BELOW
     if len(date)==9:
         meancal = 'avgcal'
     else:
