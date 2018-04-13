@@ -64,7 +64,11 @@ def addToDb(dbname):
 
   data['planet']       = 'Upsilon Andromedae b'
   data['prefix']       = 'spec_'
-  data['framelist']    = range(73,3824+1)
+  # data['framelist']    = range(105,115+1) + range(525,535+1) + range(885,895+1) + range(1230,1240+1) + range(1580,1590) + range(2125,2130) + range(2131,2135+1) + range(2845,2855+1) + range(3200,3210+1) + range(3610,3620+1)+range(3814,3824+1)
+  data['framelist']   = [105]
+  # data['framelist'] = range(1236,1240+1) + range(1580,1590) + range(2125,2135+1) + range(2845,2855+1) + range(3200,3210+1) + range(3610,3620+1)+range(3814,3824+1)
+  # Stopped at 1237 last time. i.e. do 1237+
+  # kill ccdproc attempt
   data['flatlist']     = {
                             90: range(13,37+1)+range(68,70+1),
                             85: [45,67],
@@ -72,7 +76,7 @@ def addToDb(dbname):
                             75: [47,65],
                             70: [48,64],
                             65: [49,63],
-                            60: [50,62],
+                            60: [62],
                             55: [51,61],
                             50: [52,60],
                             45: [53,59],
@@ -85,8 +89,8 @@ def addToDb(dbname):
   data['darkcallist']  = range(3825, 3875+1)
   data['callist']      = range(73, 78)
   data['datadir']      = '2016oct16/'
-  data['ap_suffix']    = 'database/ap_' + _aphome + '_Documents_science_spectroscopy_2016oct16_proc'
-  data['n_aperture']   = 5
+  data['ap_suffix']    = 'database/ap_' + _aphome + '_Documents_science_spectroscopy_2016oct16_proc_'
+  data['n_aperture']   = 6
   data['filter']       = 'OPEN5'
   data['calnod']       = False
 
@@ -105,6 +109,8 @@ def collectData(path,prefix,date,headers=['object'], targObject='',output=""):
   outstr+= 'index:'.ljust(l+1)
   for key in headers:
     outstr += (str(key)+":").ljust(l)
+
+  outstr += "Altitude:".ljust(l)
 
   #setup outputfile
   printfn = print3
@@ -166,20 +172,20 @@ def collectData(path,prefix,date,headers=['object'], targObject='',output=""):
         for key in headers:
           filestr += (str(head[key])).ljust(l)
 
+        import nsdata as ns
+        angle = ns.convertAirmassToAltitude(head['airmass'])
+        filestr += str(angle).ljust(l)
         filestr += endline
         printfn(filestr)
 
   #after loop
-  objStr = (str(min(objRange))+'-'+str(max(objRange))).ljust(l+1)
-  for key in headers:
-    objStr += str(objDict[key]).ljust(l)
-  objStr += endline
+  if len(objRange) > 0:
+    objStr = (str(min(objRange))+'-'+str(max(objRange))).ljust(l+1)
+    for key in headers:
+      objStr += str(objDict[key]).ljust(l)
+    objStr += endline
 
-  printfn(objStr)
+    printfn(objStr)
 
-# datapath = os.path.expanduser('~')+"/documents/science/spectroscopy/2016oct16/raw"
-# prefix = "spec_"
-# hoi  = ['object','filter','exptime','airmass']
-# collectData(datapath,prefix,'2016oct16', headers=hoi,targObject="UpsAnd")
-# addToDb('obsdb.json')
+
 

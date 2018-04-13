@@ -71,8 +71,9 @@ import numpy as ny
 from pylab import find
 import pdb
 
-### Define some startup variables that could go in a GUI someday
-
+################################################################
+##################### User Input Variables #####################
+################################################################
 
 data = '2016oct15' # GX And
 data = '2016oct15b' # WASP-33
@@ -80,18 +81,36 @@ data = '2016oct19' # WASP-33
 data = '2016oct20b' # WASP-33
 data = '2016oct16' #Ups And
 
+# Optional change in directory structure (Legacy)
 local = True
 
-makeDark    = True
-makeFlat    = True
-makeMask    = True
-preprocess  = True
+# Determines which subroutines to run
+makeDark    = False
+makeFlat    = False
+makeMask    = False
+
+# Calibration Frames
+preProcCal  = False
 processCal  = True
-processTarg = True
+calApp      = False
+
+# Target Frames
+preProcTarg = False
+processTarg = False
+
+#Treats flats as altitude dependent if possible
+angledFlats = False
+
+# run IRAF in interactive mode (set true)
+interactive = True
+
+# Use iraf.apflatten to flatten blaze fn
+# If false uses Ian's custom routine
+# Part of Make Flat
+irafapflatten = True 
 
 verbose = True
-interactive = True
-irafapflatten = True #Use iraf.apflatten to flatten blaze fn
+
 
 dispersion = 0.075  # Resampled dispersion, in angstroms per pixel (approximate)
 
@@ -108,233 +127,262 @@ else:
 # User Specific Directories
 _raw  = ns._home + "/documents/science/spectroscopy/" + data +"/raw/"
 _proc = ns._home + "/documents/science/spectroscopy/" + data +"/proc/"
-_telluric_dir = ns._home + '/documents/science/spectroscopy/telluric_lines/telluric_hr_'
+telluric_list = ns._home + '/documents/science/spectroscopy/telluric_lines/hk_band_lines.dat'
 _corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
 
 
-# Check if _raw exists
-if(not os.path.exists(_raw)):
-  raise IOError('No such file or directory '+_raw+'. Update _raw to point to directory containing raw data.')
-# If interactive and _proc doesn't exist, attempt to create it
-if interactive and not os.path.exists(_proc):
-  print 'Attempting to create processed data directory at: \n'+_proc
-  print 'Input "yes" to allow directory creation.'
-  _proc_input = raw_input()
-  if _proc_input.lower() == 'yes':
-    os.makedirs(_proc)
-# If proc still doesn't exist, abort
-if not os.path.exists(_proc):
-  raise IOError('No such file or directory '+_proc+'. Update _proc to point to processed data directory.')
+################################################################
+################### END User Input Variables ###################
+################################################################
 
 
-# Eventually, get all initializations from initobs:
-obs = ns.initobs(data, remote=(not local), _raw=_raw, _proc=_proc)
+# Initialize routine
+# Set in if statement to enable code-folding
+if True:
+    # Check if _raw exists
+    if(not os.path.exists(_raw)):
+        raise IOError('No such file or directory '+_raw+'. Update _raw to point to directory containing raw data.')
+    # If interactive and _proc doesn't exist, attempt to create it
+    if interactive and not os.path.exists(_proc):
+        print 'Attempting to create processed data directory at: \n'+_proc
+        print 'Input "yes" to allow directory creation.'
+        _proc_input = raw_input()
+        if _proc_input.lower() == 'yes':
+          os.makedirs(_proc)
+    # If proc still doesn't exist, abort
+    if not os.path.exists(_proc):
+        raise IOError('No such file or directory '+_proc+'. Update _proc to point to processed data directory.')
 
-_proc  = obs['_proc']
-_raw   = obs['_raw']
-n_ap   = obs['n_aperture']  #  number of apertures (i.e., echelle orders)
-filter = obs['filter']  # photometric band in which we're operating
-prefn  = str(obs['prefix'])  # filename prefix
-calnod = obs['calnod'] # whether A0V calibrators nod, or not
+
+    # Grab observational data from database
+    obs = ns.initobs(data, remote=(not local), _raw=_raw, _proc=_proc)
+
+    # reprocess obs dict into vars
+    _proc  = obs['_proc']
+    _raw   = obs['_raw']
+    n_ap   = obs['n_aperture']  #  number of apertures (i.e., echelle orders)
+    filter = obs['filter']  # photometric band in which we're operating
+    prefn  = str(obs['prefix'])  # filename prefix
+    calnod = obs['calnod'] # whether A0V calibrators nod, or not
+    db_pre = obs['ap_suffix']
 
 
-procData = processCal or processTarg
-badval = 0
-ir.task(bfixpix = _iraf+"bfixpix.cl")
-ir.task(bfixpix_one = _iraf+"bfixpix_one.cl")
-#ir.load('fitsutil')
-ir.load('noao')
-ir.load('astutil')
-ir.load("imred")
-ir.load('echelle')
-ir.load('twodspec')
-ir.load('apextract')
+    procData = processCal or processTarg
+    preProcData = preProcCal or preProcTarg
+    badval = 0
+    ir.task(bfixpix = _iraf+"bfixpix.cl")
+    ir.task(bfixpix_one = _iraf+"bfixpix_one.cl")
+    #ir.load('fitsutil')
+    ir.load('noao')
+    ir.load('astutil')
+    ir.load("imred")
+    ir.load('echelle')
+    ir.load('twodspec')
+    ir.load('apextract')
 
-telluric_list = _telluric_dir + filter + '.dat'
-if(not os.path.exists(telluric_list) and processCal):
-  raise IOError('No such file or directory '+telluric_list+'. Update _telluric_dir to point directory with telluric line list for '+filter+' filter.')
+    if(not os.path.exists(telluric_list) and processCal):
+        raise IOError('No such file or directory '+telluric_list+'. Update telluric_list to point to file with telluric line list for your data.')
 
-if filter=='K' or filter=='H':
-    horizsamp = "10:500 550:995"
+    if filter=='K' or filter=='H':
+        horizsamp = "10:500 550:995"
 
-elif filter=='L':
-    horizsamp = "10:270 440:500 550:980"
+    elif filter=='L':
+        horizsamp = "10:270 440:500 550:980"
 
-elif filter=='Karies' or filter=='OPEN5':
-    horizsamp = "10:995"
+    elif filter=='Karies' or filter=='OPEN5':
+        horizsamp = "10:995"
 
-if filter=='Karies' or filter=='OPEN5':
-    observ = 'flwo'
-    itime = 'exptime'
-    date = 'UTSTART'
-    time = None
-    dofix = True
-    t_width = 15.
-    trace_step = 10
-    trace_order = 3
-    quadcorrect = True # Correct for detector crosstalk
-else: 
-    observ = 'keck'
-    itime = 'itime'
-    date = 'date-obs'
-    time = 'UTC'
-    dofix = True
-    t_width = 115.
-    trace_step = 50
-    trace_order = 7
-    quadcorrect = False # Correct for detector crosstalk
+    if filter=='Karies' or filter=='OPEN5':
+        observ = 'flwo'
+        itime = 'exptime'
+        date = 'UTSTART'
+        time = None
+        dofix = True
+        t_width = 15.
+        trace_step = 10
+        trace_order = 3
+        quadcorrect = True # Correct for detector crosstalk
+    else: 
+        observ = 'keck'
+        itime = 'itime'
+        date = 'date-obs'
+        time = 'UTC'
+        dofix = True
+        t_width = 115.
+        trace_step = 50
+        trace_order = 7
+        quadcorrect = False # Correct for detector crosstalk
+        
+    if filter=='K':
+        cleanec = True
+        cleancr = False
+        qfix = True
+        csigma=25
+        cthreshold=400
+        rratio = 5
+        rthreshold = 300
+    elif filter=='H':
+        cleanec = False
+        cleancr = True
+        csigma=30
+        cthreshold=900
+        qfix = False
+        rratio = 5
+        rthreshold = 300
+    elif filter=='L':
+        cleanec = True
+        cleancr = False
+        qfix = True
+        csigma=25
+        cthreshold=400
+        rratio = 5
+        rthreshold = 300
+    elif filter=='Karies' or filter=='OPEN5':
+        cleanec = True
+        cleancr = False
+        qfix = 'aries'
+        csigma=25
+        cthreshold=400
+        rratio = 5
+        rthreshold = 300
+    else:
+        qfix = True
+
+
+
+    bsamp   = "-18:-10,10:18"
+    bfunc = 'chebyshev'
+    bord = 3   # background subtraction function order
     
-if filter=='K':
-    cleanec = True
-    cleancr = False
-    qfix = True
-    csigma=25
-    cthreshold=400
-    rratio = 5
-    rthreshold = 300
-elif filter=='H':
-    cleanec = False
-    cleancr = True
-    csigma=30
-    cthreshold=900
-    qfix = False
-    rratio = 5
-    rthreshold = 300
-elif filter=='L':
-    cleanec = True
-    cleancr = False
-    qfix = True
-    csigma=25
-    cthreshold=400
-    rratio = 5
-    rthreshold = 300
-elif filter=='Karies' or filter=='OPEN5':
-    cleanec = True
-    cleancr = False
-    qfix = 'aries'
-    csigma=25
-    cthreshold=400
-    rratio = 5
-    rthreshold = 300
-else:
-    qfix = True
+    idlexec = os.popen('which idl').read().strip()
+    
+    postfn  = ".fits"
+    maskfn  = ".pl"
+
+    ##### Sets keywords for filenames 
+    ################################################################
+    ################################################################
+    _sflat     = _proc + prefn + "_flat"
+    _sflats    = _proc + prefn + "_flat_sig"
+    _sflatdc   = _proc + prefn + "_flatd" 
+    _sflatdcn  = _proc + prefn + "_flatdn" 
+    
+    _sdark = _proc + prefn + "_dark" 
+    _sdarks = _proc + prefn + "_dark_sig"
+    _sdarkflat = _proc + prefn + "_darkflat"
+    _sdarkflats = _proc + prefn + "_darkflats"
+    _sdarkcal  = _proc + prefn + "_darkcal"
+    _sdarkcals  = _proc + prefn + "_darkcals"
+    
+    _mask1  = _proc + prefn + "_badpixelmask1"  + maskfn
+    _mask2  = _proc + prefn + "_badpixelmask2"  + maskfn
+    _mask3  = _proc + prefn + "_badpixelmask3"  + maskfn
+    _mask  = _proc + prefn + "_badpixelmask"  + maskfn
+    _fmask  = _proc + prefn + "_flatpixelmask"  + maskfn
+    _dmask  = _proc + prefn + "_darkpixelmask"  + postfn
+    _wldat = 'ec'
+    
+    rawdark  = ns.strl2f(_proc+'rawdark', obs['darkfilelist'], clobber=True)
+    rawdarkflat = ns.strl2f(_proc+'rawdarkflat', obs['darkflatlist'], clobber=True)
+    rawdarkcal  = ns.strl2f(_proc+'rawdarkcal', obs['darkcallist'], clobber=True)
+
+  # Determines if flats are angle dependent or not
+    rawflat_list = []
+    rawflat_dict = None
+    flats_as_dict = False
+    if type(obs['flatfilelist']) == dict:
+        rawflat_dict = obs['flatfilelist']
+        rawflat_list = [item for sublist in obs['flatfilelist'].values() for item in sublist]
+        rawflat_list.sort()
+        if angledFlats:
+            flats_as_dict = True
+    else:
+        rawflat_list = obs['flatfilelist']
+
+    procflat_list = [el.replace(_raw, _proc) for el in rawflat_list]
+    procflat  = ns.strl2f(_proc+'procflat', procflat_list, clobber=True)
+
+    if flats_as_dict:
+        procflat_dict      = {}
+        procflatfile_dict  = {}
+        _sflat_dict        = {}
+        _sflats_dict       = {}
+        _sflatdc_dict      = {}
+        _sflatdcn_dict     = {}
 
 
-
-bsamp   = "-18:-10,10:18"
-bfunc = 'chebyshev'
-bord = 3   # background subtraction function order
- 
-idlexec = os.popen('which idl').read().strip()
-
-postfn  = ".fits"
-maskfn  = ".pl"
-_sflat     = _proc + prefn + "_flat"
-_sflats    = _proc + prefn + "_flat_sig"
-_sflatdc   = _proc + prefn + "_flatd" 
-_sflatdcn  = _proc + prefn + "_flatdn" 
-
-_sdark = _proc + prefn + "_dark" 
-_sdarks = _proc + prefn + "_dark_sig"
-_sdarkflat = _proc + prefn + "_darkflat"
-_sdarkflats = _proc + prefn + "_darkflats"
-_sdarkcal  = _proc + prefn + "_darkcal"
-_sdarkcals  = _proc + prefn + "_darkcals"
-
-_mask1  = _proc + prefn + "_badpixelmask1"  + maskfn
-_mask2  = _proc + prefn + "_badpixelmask2"  + maskfn
-_mask3  = _proc + prefn + "_badpixelmask3"  + maskfn
-_mask  = _proc + prefn + "_badpixelmask"  + maskfn
-_fmask  = _proc + prefn + "_flatpixelmask"  + maskfn
-_dmask  = _proc + prefn + "_darkpixelmask"  + postfn
-_wldat = 'ec'
-
-rawdark  = ns.strl2f(_proc+'rawdark', obs['darkfilelist'], clobber=True)
-rawdarkflat = ns.strl2f(_proc+'rawdarkflat', obs['darkflatlist'], clobber=True)
-rawdarkcal  = ns.strl2f(_proc+'rawdarkcal', obs['darkcallist'], clobber=True)
-
-rawflat_list = []
-rawflat_dict = None
-if type(obs['flatfilelist']) == dict:
-    rawflat_dict = obs['flatfilelist']
-    rawflat_list = [item for sublist in obs['flatfilelist'].values() for item in sublist]
-    rawflat_list.sort()
-else:
-    rawflat_list = obs['flatfilelist']
+        for key in rawflat_dict.keys():
+            procflat_dict[key] = [el.replace(_raw, _proc) for el in rawflat_dict[key]]
+            procflatfile_dict[key] = ns.strl2f(_proc+'procflat_'+key, procflat_dict[key], clobber=True)
+            _sflat_dict[key]    = _sflat    + '_' + key
+            _sflats_dict[key]   = _sflats   + '_' + key
+            _sflatdc_dict[key]  = _sflatdc  + '_' + key
+            _sflatdcn_dict[key] = _sflatdcn + '_' + key
 
 
-flats_as_dict = rawflat_dict!=None
+    # Used to test batch processing
+    stlist = obs['spectargfilelist']
+    # stlist = [f+'_batch' for f in stlist]
 
-procflat_list = [el.replace(_raw, _proc) for el in rawflat_list]
-procflat  = ns.strl2f(_proc+'procflat', procflat_list, clobber=True)
+    rawcal   = ns.strl2f(_proc+'rawcal',   obs['rawcalfilelist'], clobber=True)
+    proccal  = ns.strl2f(_proc+'proccal',  obs['proccalfilelist'], clobber=True)
+    rawtarg  = ns.strl2f(_proc+'rawtarg',  obs['rawtargfilelist'], clobber=True)
+    proctarg = ns.strl2f(_proc+'proctarg', obs['proctargfilelist'], clobber=True)
+    speccal  = ns.strl2f(_proc+'speccal',  obs['speccalfilelist'], clobber=True)
+    # spectarg = ns.strl2f(_proc+'spectarg', obs['spectargfilelist'], clobber=True)
+    spectarg = ns.strl2f(_proc+'spectarg', stlist, clobber=True)
 
-if flats_as_dict:
-    procflat_dict     = {}
-    procflatfile_dict = {}
-    _sflat_dict        = {}
-    _sflats_dict       = {}
-    _sflatdc_dict      = {}
-    _sflatdcn_dict     = {}
+    meancal  =  prefn + 'avgcal'
 
+    ################################################################
+    ################################################################
+    
+    ir.unlearn('imcombine')
+    ir.unlearn('echelle')
+    
+    # Set parameters for aperture tracing, flat-field normalizing, etc.
+    ###################################################################
+    ###################################################################
+    ir.apextract.dispaxis = 1
+    
+    ir.echelle.dispaxis = 1
+    ir.echelle.apedit.width = t_width
+    ir.echelle.apfind.minsep = 10.
+    ir.echelle.apfind.maxsep = 150.
+    ir.echelle.apfind.nfind = n_ap
+    ir.echelle.apfind.recenter = "Yes"
+    ir.echelle.apfind.nsum = -3
+    
+    ir.apall.ylevel = "INDEF" #0.05
+    ir.apall.bkg = "Yes"
+    ir.apall.ulimit = 2
+    ir.apall.llimit = -2
+    
+    
+    ir.aptrace.order = trace_order
+    ir.aptrace.niterate = 3
+    ir.aptrace.step = trace_step
+    ir.aptrace.naverage = 1
+    ir.aptrace.nlost = 999
+    ir.aptrace.recenter = "yes"
+    
+    # Set detector properties:
+    gain = 4.0  # photons (i.e., electrons) per data unit
+    readnoise = 10.0   # photons (i.e., electrons)
+    ir.imcombine.gain = gain
+    ir.imcombine.rdnoise = readnoise
+    ir.apall.gain = gain
+    ir.apall.readnoise = readnoise
+    ir.apnormalize.gain = gain
+    ir.apnormalize.readnoise = readnoise
+    
 
-    for key in rawflat_dict.keys():
-        procflat_dict[key] = [el.replace(_raw, _proc) for el in rawflat_dict[key]]
-        procflatfile_dict[key] = ns.strl2f(_proc+'procflat_'+key, procflat_dict[key], clobber=True)
-        _sflat_dict[key]    = _sflat    + '_' + key
-        _sflats_dict[key]   = _sflats   + '_' + key
-        _sflatdc_dict[key]  = _sflatdc  + '_' + key
-        _sflatdcn_dict[key] = _sflatdcn + '_' + key
+    ir.set(observatory=observ)
+###################################################################
+###################################################################
 
-rawcal   = ns.strl2f(_proc+'rawcal',   obs['rawcalfilelist'], clobber=True)
-proccal  = ns.strl2f(_proc+'proccal',  obs['proccalfilelist'], clobber=True)
-rawtarg  = ns.strl2f(_proc+'rawtarg',  obs['rawtargfilelist'], clobber=True)
-proctarg = ns.strl2f(_proc+'proctarg', obs['proctargfilelist'], clobber=True)
-speccal  = ns.strl2f(_proc+'speccal',  obs['speccalfilelist'], clobber=True)
-spectarg = ns.strl2f(_proc+'spectarg', obs['spectargfilelist'], clobber=True)
-
-meancal  =  prefn + 'avgcal'
-
-ir.unlearn('ccdproc')
-ir.unlearn('imcombine')
-ir.unlearn('echelle')
-
-# Set parameters for aperture tracing, flat-field normalizing, etc.
-ir.apextract.dispaxis = 1
-
-ir.echelle.dispaxis = 1
-ir.echelle.apedit.width = t_width
-ir.echelle.apfind.minsep = 10.
-ir.echelle.apfind.maxsep = 150.
-ir.echelle.apfind.nfind = n_ap
-ir.echelle.apfind.recenter = "Yes"
-ir.echelle.apfind.nsum = -3
-
-ir.apall.ylevel = "INDEF" #0.05
-ir.apall.bkg = "Yes"
-ir.apall.ulimit = 2
-ir.apall.llimit = -2
-
-
-ir.aptrace.order = trace_order
-ir.aptrace.niterate = 3
-ir.aptrace.step = trace_step
-ir.aptrace.naverage = 1
-ir.aptrace.nlost = 999
-ir.aptrace.recenter = "yes"
-
-# Set detector properties:
-gain = 4.0  # photons (i.e., electrons) per data unit
-readnoise = 10.0   # photons (i.e., electrons)
-ir.imcombine.gain = gain
-ir.imcombine.rdnoise = readnoise
-ir.apall.gain = gain
-ir.apall.readnoise = readnoise
-ir.apnormalize.gain = gain
-ir.apnormalize.readnoise = readnoise
-
-
-ir.set(observatory=observ)
 # Combine dark frames into a single dark frame:
+# See labbook for more details :(
 if makeDark:
     ir.imdelete(_sdark)
     ir.imdelete(_sdarks)
@@ -357,6 +405,8 @@ if makeDark:
     ns.write_exptime(_sdarkcal, itime=itime)
 
     if verbose: print "Done making dark frames!"
+###################################################################
+###################################################################
 
 if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     if verbose: 
@@ -369,9 +419,6 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     ir.imdelete(_sflatdc)
     ir.imdelete(_sflatdc+'big')
 
-    ir.imdelete(_sflatdcn)
-    ir.imdelete(_sflatdcn+'big')
-
     if flats_as_dict:
         for angle in _sflat_dict.keys():
             ir.imdelete(_sflat_dict[angle])
@@ -382,6 +429,9 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
 
             ir.imdelete(_sflatdcn_dict[angle])
             ir.imdelete(_sflatdcn_dict[angle]+'big')
+    else:
+      ir.imdelete(_sflatdcn)
+      ir.imdelete(_sflatdcn+'big')
 
     # Correct for dectector crosstalk
     if verbose: 
@@ -421,6 +471,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
 
     # Corrects blaze function (Flattens flat frames)
     if verbose: 
+        print "----------------------------------------"
         print "Correcting for flat field blaze functions"
         print "----------------------------------------"
 
@@ -471,10 +522,15 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
         print "----------------------------------------"
         print "----------------------------------------"
         print "Done making flat frame(s)!"
+###################################################################
+###################################################################
 
 if makeMask:  
     if verbose:
         print "Beginning to make bad pixel masks..."
+        print "----------------------------------------"
+        print "----------------------------------------"
+
 
     # iterate through the superflat 3 times to get bad pixels, then
     # construct a super-bad pixel map.
@@ -526,37 +582,55 @@ if makeMask:
     
 
 
-    if verbose:  print "Done making bad pixel mask!"
+    if verbose:  
+        print "Done making bad pixel mask!"
+        print "----------------------------------------"
+###################################################################
+###################################################################     
+
+if preProcData:
+    flat_for_proc = _sflatdcn
+    if flats_as_dict: flat_for_proc = _sflatdcn_dict
+
+    if preProcCal:
+        # Add 'exptime' header to all cal, target, and lamp files:
+        ns.write_exptime(rawcal, itime=itime)
+
+        # Correct for bad pixels and normalize all the frames by the flat field
+        # will edit for multiple flats
+        ir.load('crutil')
+
+        ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
+            qpref='', flat=flat_for_proc, dark=_sdarkcal,
+            mask=_mask.replace(maskfn, postfn),
+            cleanec=cleanec, clobber=True, verbose=verbose,
+            csigma=csigma, cthreshold=cthreshold,
+            cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
+            date=date, time=time, dofix=dofix, corquad=_corquad)
+
+    if preProcTarg:
+        ns.write_exptime(rawtarg, itime=itime)
+
+        ns.preprocess('@'+rawtarg, '@'+proctarg, qfix=qfix,
+            qpref='', flat=flat_for_proc, dark=_sdark,
+            mask=_mask.replace(maskfn, postfn),
+            cleanec=cleanec, clobber=True, verbose=verbose,
+            csigma=csigma, cthreshold=cthreshold,
+            cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
+            date=date, time=time, dofix=dofix, corquad=_corquad)
+
+    if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
+
 
 if procData:
     os.chdir(_proc)
     ir.chdir(_proc)
 
     if processCal:
-        # Add 'exptime' header to all cal, target, and lamp files:
-        ns.write_exptime(rawcal, itime=itime)
-        #ns.write_exptime(rawlamp)
-
-        # Correct for bad pixels and normalize all the frames by the flat field
-        # will edit for multiple flats
-        ir.load('crutil')
-
-        if preprocess:
-          flat_for_proc = _sflatdcn
-          if flats_as_dict: flat_for_proc = _sflatdcn_dict
-          
-          ns.preprocess('@'+rawcal, '@'+proccal, qfix=qfix,
-                        qpref='', flat=flat_for_proc, dark=_sdarkcal,
-                        mask=_mask.replace(maskfn, postfn),
-                        cleanec=cleanec, clobber=True, verbose=verbose,
-                        csigma=csigma, cthreshold=cthreshold,
-                        cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
-                        date=date, time=time, dofix=dofix, corquad=_corquad)
-
-        if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
+        if calApp:
         # Extract raw spectral data from the echelle images
-        ir.imdelete('@'+speccal)
-        ir.apall('@'+proccal, output='@'+speccal, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, weights='variance', bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')
+          ir.imdelete('@'+speccal)
+          ir.apall('@'+proccal, output='@'+speccal, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, weights='variance', bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')
         
         if verbose:  print "Done extracting spectra from cal stars!"
         
@@ -593,7 +667,7 @@ if procData:
         hdr_interp = pyfits.getheader(meancal+postfn)
         
         pyfits.writeto('winterp'+postfn, w_interp, hdr_interp, clobber=True, output_verify='ignore')
-        ns.interp_spec(meancal, w, w_interp, k=3.0, suffix='int', badval=badval, clobber=True)
+        ns.interp_spec(meancal, w, w_interp, k=3.0, suffix='int', badval=badval, clobber=True,verbose=True)
 
         # Sample each aperture so that they all have equal pixel widths
         #   and equal  wavelength coverage:
@@ -610,26 +684,37 @@ if procData:
 
     ##########################################
 
-
     if processTarg:
-        ns.write_exptime(rawtarg, itime=itime)
+        # # Attempting batch processing
+        _targap  = _proc+prefn+"_targap"
+        _targaps = _proc+prefn+"_targaps"
 
-        if preprocess:
-          flat_for_proc = _sflatdcn
-          if flats_as_dict: flat_for_proc = _sflatdcn_dict
+        ir.imdelete(_targap)
+        ir.imdelete(_targaps)
+        ir.imcombine("@"+proctarg, output=_targap, combine="average",reject="avsigclip", sigmas=_targaps, scale="none", weight="median", bpmasks="")
 
-          ns.preprocess('@'+rawtarg, '@'+proctarg, qfix=qfix,
-                        qpref='', flat=flat_for_proc, dark=_sdark,
-                        mask=_mask.replace(maskfn, postfn),
-                        cleanec=cleanec, clobber=True, verbose=verbose,
-                        csigma=csigma, cthreshold=cthreshold,
-                        cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
-                        date=date, time=time, dofix=dofix, corquad=_corquad)
-
-        if verbose:  print "Done correcting targ frames for bad pixels, dark-correcting, and flat-fielding!"
-
+        ir.apfind(_targap, interactive=interactive, nfind=n_ap, minsep=10)
+        ir.aptrace(_targap, interactive=interactive, recenter='no', resize='no', function='chebyshev', order=3, sample=horizsamp, naverage=3,niterate=3)
+        # ap_ref = db_pre+prefn+"_targap"
+  
         ir.imdelete('@'+spectarg)
-        ir.apall('@'+proctarg, output='@'+spectarg, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')
+        ir.apall('@'+proctarg, output='@'+spectarg, references=_targap, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=False, nsum=-10, t_function='chebyshev')
+
+        # Recenter? YES
+        # Resize? YES
+        # EDIT? NO
+        # Trace? NO
+        # Write? YES
+        # Extract? YES
+        # Review? NO
+
+
+        #End Attempt
+
+        # #before batch attempt
+        # ir.imdelete('@'+spectarg)
+        # ir.apall('@'+proctarg, output='@'+spectarg, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')
+        # #End before
         
         if verbose:  print "Done extracting spectra from target stars!"
         

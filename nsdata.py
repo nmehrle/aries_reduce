@@ -1791,7 +1791,7 @@ def interpolateFlatFrameFromAngle(allflats, altitude):
     outhdr['OBJECT0'] = flathdrs[0]['OBJECT']
     outhdr['WEIGHT0'] = weights[0]
     if len(flathdrs)>1:
-        for ind,hdr in ennumerate(flathdrs[1:]):
+        for ind,hdr in enumerate(flathdrs[1:]):
             outhdr['OBJECT'+str(ind+1)] = hdr['OBJECT']
             outhdr['WEIGHT'+str(ind+1)] = weights[ind+1]
             for k,v in hdr.items():
@@ -2290,6 +2290,7 @@ def initobs(date, **kw):
     ret['starmodelfilename']   = starmodelfilename
     ret['planetmodelfilename'] = planetmodelfilename
     ret['aplist']              = aplist
+    ret['ap_suffix']           = ap_suffix
     ret['telluric_fn']         = telluric_fn
     ret['_raw']                = _raw
     ret['darkfilelist']        = darkfilelist
