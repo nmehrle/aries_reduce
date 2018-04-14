@@ -757,6 +757,16 @@ def interp_spec(filename, w, w_interp, suffix='int', k=1, badval=0, clobber=True
             print "n_ap>>" + str(n_ap)
             print "w_interp.shape>>" + str(w_interp.shape)
 
+        # Select which apnums to keep
+        header_keyword = 'APNUM'
+        order_numbers  = []
+        for key,value in irafheader.items():
+          if header_keyword in key:
+            order_numbers.append(int(value.split(' ')[0]) - 1)
+        
+        w_interp = w_interp[order_numbers]
+
+        # Interpolate
         n_w = w.size/len(w)
         s_interp = zeros([n_bands+1, n_ap, size(w_interp,1)])
         s_interp[n_bands,:,:] = w_interp
