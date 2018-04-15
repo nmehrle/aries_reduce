@@ -668,7 +668,7 @@ def wl_grid(w, dispersion, method='log', mkhdr=False, verbose=False):
 
 
 
-def interp_spec(filename, w, w_interp, suffix='int', k=1, badval=0, clobber=True, verbose=False):
+def interp_spec(filename, w, w_interp, suffix='int', k=1, APNUM_keyword='APNUM', badval=0, clobber=True, verbose=False):
     """ Reinterpolate a spectrum from a FITS file with a given wavelength
         calibration into a given wavelength grid.
           ::
@@ -758,13 +758,19 @@ def interp_spec(filename, w, w_interp, suffix='int', k=1, badval=0, clobber=True
             print "w_interp.shape>>" + str(w_interp.shape)
 
         # Select which apnums to keep
-        header_keyword = 'APNUM'
-        order_numbers  = []
-        for key,value in irafheader.items():
-          if header_keyword in key:
-            order_numbers.append(int(value.split(' ')[0]) - 1)
-        
-        w_interp = w_interp[order_numbers]
+        if (n_ap != len(w_interp)):
+            # There are gaps in orders, must select correct ones
+            order_numbers  = []
+            for key,value in irafheader.items():
+              if APNUM_keyword in key:
+                  this_order_num = int(value.split(' ')[0]) - 1
+                  order_numbers.append(this_order_num)
+
+            if verbose:
+              print "Pruning orders to be (1-indexed): "+str( [o+1 for o in order_numbers] )
+
+            w_interp = w_interp[order_numbers]
+            w        = w[order_numbers]
 
         # Interpolate
         n_w = w.size/len(w)
@@ -775,6 +781,7 @@ def interp_spec(filename, w, w_interp, suffix='int', k=1, badval=0, clobber=True
             print "s_interp.shape>>" + str(s_interp.shape)
         # ---- Reshape data; interpolate it ---
         irafspectrum = irafspectrum.reshape(n_bands, n_ap, size(irafspectrum)/n_bands/n_ap)
+
         for i_band in range(n_bands):
             for i_ap in range(n_ap):
                 spec = irafspectrum[i_band,i_ap,:]
