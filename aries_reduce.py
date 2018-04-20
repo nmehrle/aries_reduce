@@ -91,12 +91,12 @@ makeMask    = False
 
 # Calibration Frames
 preProcCal  = False
-processCal  = True
+processCal  = False
 calApp      = False
 
 # Target Frames
 preProcTarg = False
-processTarg = False
+processTarg = True
 
 #Treats flats as altitude dependent if possible
 angledFlats = False
@@ -685,7 +685,7 @@ if procData:
     ##########################################
 
     if processTarg:
-        # # Attempting batch processing
+        # Attempting batch processing
         _targap  = _proc+prefn+"_targap"
         _targaps = _proc+prefn+"_targaps"
 
@@ -698,7 +698,7 @@ if procData:
         # ap_ref = db_pre+prefn+"_targap"
   
         ir.imdelete('@'+spectarg)
-        ir.apall('@'+proctarg, output='@'+spectarg, references=_targap, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=False, nsum=-10, t_function='chebyshev')
+        ir.apall('@'+proctarg, output='@'+spectarg, references=_targap, format='echelle', recenter='yes',resize='yes',extras='yes', trace='no', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=False, nsum=-10, t_function='chebyshev')
 
         # Recenter? YES
         # Resize? YES
