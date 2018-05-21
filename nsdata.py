@@ -1726,7 +1726,7 @@ def preprocess(*args, **kw):
                     mask_temp = pyfits.getdata(indiv_mask)
                 except:
                     mask_temp = pyfits.getdata(indiv_mask + '.fits')
-                bfixpix(output_temp, mask_temp, n=8, retdat=False)
+                bfixpix(output_temp, mask_temp, n=8)
                 pyfits.writeto(ofn, output_temp, header=ohdr, output_verify='warn', clobber=True)
                 print "Couldn't CCDPROC, but managed to BFIXPIX instead."
                 
@@ -2509,7 +2509,8 @@ def cleanec(input, output, **kw):
 #ir.crmed(f12, f12.replace('fn.fits', 'fn2.fits'), ncmed=15, nlmed=1, ncsig = 25, nlsig = 10, crmask='', median='', sigma='', residual='')
 
     
-def bfixpix(data, badmask, n=4, retdat=False):
+def bfixpix(data, badmask, n=4, compact_nodes=True,
+            balanced_tree = False, n_jobs=-1, eps=0):
     """Replace pixels flagged as nonzero in a bad-pixel mask with the
     average of their nearest four good neighboring pixels.
 
@@ -2518,17 +2519,14 @@ def bfixpix(data, badmask, n=4, retdat=False):
 
       badmask : numpy array (same shape as data)
 
+      rest: kdtree inputs
+
     :OPTIONAL_INPUTS:
       n : int
         number of nearby, good pixels to average over
 
-      retdat : bool
-        If True, return an array instead of replacing-in-place and do
-        _not_ modify input array `data`.  This is always True if a 1D
-        array is input!
-
     :RETURNS: 
-      another numpy array (if retdat is True)
+      another numpy array
 
     :TO_DO:
       Implement new approach of Popowicz+2013 (http://arxiv.org/abs/1309.4224)
@@ -2539,58 +2537,21 @@ def bfixpix(data, badmask, n=4, retdat=False):
     # 2012-08-09 11:39 IJMC: Now the 'n' option actually works.
     # 2015-10-30 12:07 IJMC: Fixed (x,y) coordinate offset; thanks to
     #                        Jordan Stone of UA for this!
+    # 2018-5-21  15:44 NM: Implemented KD tree 
 
-    if data.ndim==1:
-        data = np.tile(data, (3,1))
-        badmask = np.tile(badmask, (3,1))
-        ret = bfixpix(data, badmask, n=2, retdat=True)
-        return ret[1]
+    from scipy import spatial
 
+    badpix = np.transpose(np.nonzero(badmask))
+    goodpix = np.transpose(np.nonzero(1-badmask))
 
-    nx, ny = data.shape
+    tree  = spatial.cKDTree(goodpix,compact_nodes = compact_nodes,balanced_tree = balanced_tree)
+    dd,ii = tree.query(badpix,n,eps=eps,n_jobs=n_jobs)
 
-    badx, bady = nonzero(badmask)
-    nbad = len(badx)
+    all_neighbors = goodpix[ii].transpose(0,2,1)
+    interp_values = np.mean([data[neighbors[0],neighbors[1]] for neighbors in all_neighbors],1)
 
-    if retdat:
-        data = array(data, copy=True)
-    
-    for ii in range(nbad):
-        thisloc = badx[ii], bady[ii]
-        rad = 0
-        numNearbyGoodPixels = 0
-
-        while numNearbyGoodPixels<n:
-            rad += 1
-            xmin = max(0, badx[ii]-rad)
-            xmax = min(nx, badx[ii]+rad)
-            ymin = max(0, bady[ii]-rad)
-            ymax = min(ny, bady[ii]+rad)
-            x = arange(nx)[xmin:xmax+1] - badx[ii]
-            y = arange(ny)[ymin:ymax+1] - bady[ii]
-            yy,xx = meshgrid(y,x)
-            #print ii, rad, xmin, xmax, ymin, ymax, badmask.shape
-            
-            rr = abs(xx + 1j*yy) * (1. - badmask[xmin:xmax+1,ymin:ymax+1])
-            numNearbyGoodPixels = (rr>0).sum()
-            from pylab import *
-            #pdb.set_trace()
-
-        closestDistances = unique(sort(rr[rr>0])[0:n])
-        numDistances = len(closestDistances)
-        localSum = 0.
-        localDenominator = 0.
-        for jj in range(numDistances):
-            localSum += data[xmin:xmax+1,ymin:ymax+1][rr==closestDistances[jj]].sum()
-            localDenominator += (rr==closestDistances[jj]).sum()
-
-        #print badx[ii], bady[ii], 1.0 * localSum / localDenominator, data[xmin:xmax+1,ymin:ymax+1]
-        data[badx[ii], bady[ii]] = 1.0 * localSum / localDenominator
-
-    if retdat:
-        ret = data
-    else:
-        ret = None
+    ret = np.array(data,copy=True)
+    ret[tuple(badpix[:,0]), tuple(badpix[:,1])] = interp_values
 
     return ret
     
