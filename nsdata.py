@@ -2360,7 +2360,6 @@ def cleanec(input, output, **kw):
         import pyfits
     
     from pylab import find
-    from time import time
 
     # Check if filein is str or array; load file if the former.  Set
     # dispersion direction via transpose.
@@ -2434,29 +2433,21 @@ def cleanec(input, output, **kw):
         allrows = arange(nrow)
         for ipix in range(ncol):
             # Set indices and extract the segment to examine
-            tic = time()
             minind = max(0, ipix - kw['window']/2)
             maxind = min(ncol, ipix + kw['window']/2)
             segs = ec[:, minind:maxind]
-            segind = set(arange(segs.shape[1]))
-            residuals = abs(segs - median(segs,1).reshape(nrow,1))
-            maxres = tile(residuals.max(1),(segs.shape[1],1)).transpose()
-            t0 += time()-tic
+            window_size = segs.shape[1]
+            residuals = abs(segs - median(segs,1)[:,np.newaxis])
 
-            tic = time()
-            maxind = array([nonzero(test)[0][0] for test in residuals==maxres])
-            goodind = map(list, [segind.difference(set([maxval])) for maxval in maxind])
-            t1 += time()-tic
+            maxind = argmax(residuals,1)
+            goodind = tile(arange(window_size),(nrow,1)) != maxind[:,newaxis]
+            goodvals = segs[goodind].reshape(nrow,window_size-1)
 
-            tic = time()
-            segstd = std([ss[gg] for ss,gg in zip(segs,goodind)], 1)
+            segstd = std(goodvals,1)
             # Measure (a) its discrepancy and (b) stdev of the remainder
-            t2 += time()-tic
-            tic = time()
             discrepancy = residuals[allrows, maxind]
             sigma = discrepancy/segstd
             repind =  (sigma>kw['nsigma']) * (discrepancy>kw['threshold'])
-            t25 += time()-tic
 
             prior_value = maxind[repind] - 1
             prior_value[prior_value<0] = 0
@@ -2467,7 +2458,6 @@ def cleanec(input, output, **kw):
             #   if maximum value is _first_, return the latter value
             #   if maximum value is _last_, return the former value
             #   otherwise, return average of former & latter
-            tic = time()
             firstbadval = maxind[repind]==0
             lastbadval = maxind[repind]==(segs.shape[1]-1)
             midbadval = True - (firstbadval + lastbadval)
@@ -2480,17 +2470,11 @@ def cleanec(input, output, **kw):
                 lastbadval * segs[repind,segs.shape[1]-2] 
             segs[repind2, maxind2] += \
                 0.5 * (segs[repind2, maxind2-1] + segs[repind2, maxind2+1])
-            t3 += time() - tic
-            if verbose: 
-                if ipix/100==(1.0*ipix/100.):
-                    print 'finished column %i/%i' % (ipix, ncol),
-                    sys.stdout.flush()
 
         passNumber += 1
     
-        if verbose: print ('pass %i complete: times elapsed per section>>' % 
-                passNumber), t0, t1, t2, t25, t3, 
-
+        if verbose: 
+          print 'pass %i complete'
     if hdr is None:
         pyfits.writeto(output, ec, clobber=kw['clobber'], \
                            output_verify='warn')
