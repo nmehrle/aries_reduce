@@ -2494,7 +2494,7 @@ def cleanec(input, output, **kw):
 
     
 def bfixpix(data, badmask, n=4, compact_nodes=True,
-            balanced_tree = False, n_jobs=-1, eps=0):
+            balanced_tree = False, n_jobs=-1, eps=0, retdat=True):
     """Replace pixels flagged as nonzero in a bad-pixel mask with the
     average of their nearest four good neighboring pixels.
 
@@ -2524,6 +2524,16 @@ def bfixpix(data, badmask, n=4, compact_nodes=True,
     # 2018-5-21  15:44 NM: Implemented KD tree 
 
     from scipy import spatial
+    if data.ndim == 1:
+      data = np.tile(data,(3,1))
+      badmask = np.tile(badmask, (3,1))
+      ret = bfixpix(data,badmask,n=n,retdat=True)
+      return ret[1]
+
+    if retdat:
+      ret = np.array(data,copy=True)
+    else:
+      ret = data
 
     badpix = np.transpose(np.nonzero(badmask))
     goodpix = np.transpose(np.nonzero(1-badmask))
@@ -2534,7 +2544,6 @@ def bfixpix(data, badmask, n=4, compact_nodes=True,
     all_neighbors = goodpix[ii].transpose(0,2,1)
     interp_values = np.mean([data[neighbors[0],neighbors[1]] for neighbors in all_neighbors],1)
 
-    ret = np.array(data,copy=True)
     ret[tuple(badpix[:,0]), tuple(badpix[:,1])] = interp_values
 
     return ret
