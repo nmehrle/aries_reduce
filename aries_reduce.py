@@ -99,7 +99,7 @@ preProcTarg = False
 processTarg = True
 
 #Treats flats as altitude dependent if possible
-angledFlats = False
+angledFlats = True
 
 # run IRAF in interactive mode (set true)
 interactive = True
@@ -647,20 +647,11 @@ if procData:
         ir.ecidentify(meancal, database=_wldat, coordlist=telluric_list, ftype='absorption', fwidth='10', niterate=3, low=5, high=5, xorder=3, yorder=3)
 
         disp_soln = ns.getdisp(_wldat + os.sep + 'ec' + meancal)
-        if disp_soln[1]==[32,37]:
-            w    = ns.dispeval(disp_soln[0], disp_soln[1], disp_soln[2], shift=disp_soln[3])
-            w = w[::-1]
-            hdr = pyfits.getheader(meancal+postfn)
-            pyfits.writeto('wmc'+postfn, w, hdr, clobber=True, output_verify='ignore')
-        else:
-            print 'Wrong aperture order numbers calculated -- fit is suspect. ' + \
-                'Press enter to continue.'
-            if interactive:
-                raw_input()
-            w    = ns.dispeval(disp_soln[0], disp_soln[1], disp_soln[2], shift=disp_soln[3])
-            w = w[::-1]
-            hdr = pyfits.getheader(meancal+postfn)
-            pyfits.writeto('wmc'+postfn, w, hdr, clobber=True, output_verify='ignore')
+
+        w = ns.dispeval(disp_soln[0], disp_soln[1], disp_soln[2], shift=disp_soln[3])
+        w = w[::-1]
+        hdr = pyfits.getheader(meancal+postfn)
+        pyfits.writeto('wmc'+postfn, w, hdr, clobber=True, output_verify='ignore')
                     
         w_interp   = ns.wl_grid(w, dispersion, method='linear')
         #w_interp = w_interp[ny.argsort(w_interp.mean(1))]
@@ -686,6 +677,9 @@ if procData:
 
     if processTarg:
         # Attempting batch processing
+
+        # We take the median dataFrame and identify/trace aperatures on it
+        # We then pass this as a reference to apall on all data frames
         _targap  = _proc+prefn+"_targap"
         _targaps = _proc+prefn+"_targaps"
 
@@ -696,9 +690,24 @@ if procData:
         ir.apfind(_targap, interactive=interactive, nfind=n_ap, minsep=10)
         ir.aptrace(_targap, interactive=interactive, recenter='no', resize='no', function='chebyshev', order=3, sample=horizsamp, naverage=3,niterate=3)
         # ap_ref = db_pre+prefn+"_targap"
+
+        if verbose:
+            print "Identified Aperatures, commencing data extraction"
+            print "This could take a while depending on how many frames are input"
   
+        # TODO
+        # Break data into segments so we can print progress
+
         ir.imdelete('@'+spectarg)
-        ir.apall('@'+proctarg, output='@'+spectarg, references=_targap, format='echelle', recenter='yes',resize='yes',extras='yes', trace='no', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=False, nsum=-10, t_function='chebyshev')
+        list_proctarg = ny.loadtxt(proctarg,str)
+        list_spectarg = ny.loadtxt(spectarg,str)
+
+        num_frames = len(list_proctarg)
+        for i in range(num_frames):
+            if verbose:
+                print('processing file '+str(i+1)+' of '+str(num_frames))
+
+            ir.apall(list_proctarg[i], output=list_spectarg[i], references=_targap, format='echelle', recenter='yes',resize='yes',extras='yes', trace='no', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=False, nsum=-10, t_function='chebyshev')
 
         # Recenter? YES
         # Resize? YES
