@@ -2986,7 +2986,7 @@ def darkbpmap(filelist, clipsigma=5, sigma=25, writeto=None, clobber=False, verb
         ret = badpixelmap
     else:
         ret = None
-        pyfits.writeto(writeto, badpixelmap.astype(outtype), clobber=clobber)
+        pyfits.writeto(writeto, badpixelmap.astype(outtype), overwrite=clobber)
 
     return ret
 
@@ -3036,7 +3036,7 @@ def cutoffmask(filename, cutoff=[0, Inf], writeto=None, clobber=True):
         ret = badpixelmap
     else:
         ret = None
-        pyfits.writeto(writeto, badpixelmap.astype(float), clobber=clobber)
+        pyfits.writeto(writeto, badpixelmap.astype(float), overwrite=clobber)
 
     return ret
 
@@ -3116,7 +3116,7 @@ def subab(afiles, bfiles, outfiles, clobber=False):
 
 
             diff = adata - bdata
-            pyfits.writeto(outfn, diff, ahdr, ignore_missing_end=True, clobber=clobber)
+            pyfits.writeto(outfn, diff, ahdr, ignore_missing_end=True, overwrite=clobber)
                 
     return
 
