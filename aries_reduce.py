@@ -58,6 +58,11 @@ Other notes:
 
 import os, sys, shutil
 from pyraf import iraf as ir
+ir.prcacheOff()
+# Might be necessary for some iraf tasks with multiprocessing, unsure
+# ir.set(writepars=0)
+
+
 from scipy import interpolate, isnan, isinf
 
 try:
@@ -70,6 +75,8 @@ import spec
 import numpy as ny
 from pylab import find
 import pdb
+import multiprocessing as mp
+from functools import partial
 
 ################################################################
 ##################### User Input Variables #####################
@@ -95,8 +102,8 @@ processCal  = False
 calApp      = False
 
 # Target Frames
-preProcTarg = False
-processTarg = True
+preProcTarg = True
+processTarg = False
 
 #Treats flats as altitude dependent if possible
 angledFlats = True
@@ -115,6 +122,11 @@ verbose = True
 dispersion = 0.075  # Resampled dispersion, in angstroms per pixel (approximate)
 
 flat_threshold = 500
+
+# Set number of processors to use for processTarg
+# 0 : max number of processors on your machine
+# -1: all but 1 processor on your machine
+num_processors = -1
 
 dir0 = os.getcwd()
 
@@ -139,6 +151,12 @@ _corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
 # Initialize routine
 # Set in if statement to enable code-folding
 if True:
+    num_available_cpus = mp.cpu_count()
+    if num_processors > num_available_cpus or num_processors == -1:
+        num_processors = num_available_cpus -1
+    elif num_processors == 0:
+        num_processors = num_available_cpus
+
     # Check if _raw exists
     if(not os.path.exists(_raw)):
         raise IOError('No such file or directory '+_raw+'. Update _raw to point to directory containing raw data.')
@@ -286,7 +304,7 @@ if True:
     rawdarkflat = ns.strl2f(_proc+'rawdarkflat', obs['darkflatlist'], clobber=True)
     rawdarkcal  = ns.strl2f(_proc+'rawdarkcal', obs['darkcallist'], clobber=True)
 
-  # Determines if flats are angle dependent or not
+    # Determines if flats are angle dependent or not
     rawflat_list = []
     rawflat_dict = None
     flats_as_dict = False
@@ -319,18 +337,13 @@ if True:
             _sflatdc_dict[key]  = _sflatdc  + '_' + key
             _sflatdcn_dict[key] = _sflatdcn + '_' + key
 
-
-    # Used to test batch processing
-    stlist = obs['spectargfilelist']
-    # stlist = [f+'_batch' for f in stlist]
-
     rawcal   = ns.strl2f(_proc+'rawcal',   obs['rawcalfilelist'], clobber=True)
     proccal  = ns.strl2f(_proc+'proccal',  obs['proccalfilelist'], clobber=True)
     rawtarg  = ns.strl2f(_proc+'rawtarg',  obs['rawtargfilelist'], clobber=True)
     proctarg = ns.strl2f(_proc+'proctarg', obs['proctargfilelist'], clobber=True)
     speccal  = ns.strl2f(_proc+'speccal',  obs['speccalfilelist'], clobber=True)
-    # spectarg = ns.strl2f(_proc+'spectarg', obs['spectargfilelist'], clobber=True)
-    spectarg = ns.strl2f(_proc+'spectarg', stlist, clobber=True)
+    spectarg = ns.strl2f(_proc+'spectarg', obs['spectargfilelist'], clobber=True)
+
 
     meancal  =  prefn + 'avgcal'
 
@@ -606,7 +619,8 @@ if preProcData:
             cleanec=cleanec, clobber=True, verbose=verbose,
             csigma=csigma, cthreshold=cthreshold,
             cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
-            date=date, time=time, dofix=dofix, corquad=_corquad)
+            date=date, time=time, dofix=dofix, corquad=_corquad,
+            num_processors=num_processors)
 
     if preProcTarg:
         ns.write_exptime(rawtarg, itime=itime)
@@ -617,7 +631,8 @@ if preProcData:
             cleanec=cleanec, clobber=True, verbose=verbose,
             csigma=csigma, cthreshold=cthreshold,
             cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
-            date=date, time=time, dofix=dofix, corquad=_corquad)
+            date=date, time=time, dofix=dofix, corquad=_corquad,
+            num_processors=num_processors)
 
     if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
 
@@ -692,22 +707,55 @@ if procData:
         # ap_ref = db_pre+prefn+"_targap"
 
         if verbose:
+            print "\n\n"
             print "Identified Aperatures, commencing data extraction"
             print "This could take a while depending on how many frames are input"
   
-        # TODO
-        # Break data into segments so we can print progress
-
         ir.imdelete('@'+spectarg)
         list_proctarg = ny.loadtxt(proctarg,str)
         list_spectarg = ny.loadtxt(spectarg,str)
 
         num_frames = len(list_proctarg)
-        for i in range(num_frames):
-            if verbose:
-                print('processing file '+str(i+1)+' of '+str(num_frames))
 
-            ir.apall(list_proctarg[i], output=list_spectarg[i], references=_targap, format='echelle', recenter='yes',resize='yes',extras='yes', trace='no', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=False, nsum=-10, t_function='chebyshev')
+        apall_kws = {
+          'references'  : _targap,
+          'format'      : 'echelle',
+          'recenter'    : 'yes',
+          'resize'      : 'yes',
+          'extras'      : 'yes',
+          'trace'       : 'no',
+          'nfind'       : n_ap,
+          'nsubaps'     : 1,
+          'minsep'      : 10,
+          'bkg'         : 'yes',
+          'b_function'  : bfunc,
+          'b_order'     : bord,
+          'b_sample'    : bsamp,
+          'b_naverage'  : -3,
+          'b_niterate'  : 2,
+          't_order'     : 3,
+          't_sample'    : horizsamp,
+          't_niterate'  : 3,
+          't_naverage'  : 3,
+          'background'  : 'fit',
+          'clean'       : 'yes',
+          'interactive' : False,
+          'nsum'        : -10,
+          't_function'  : 'chebyshev'
+        }
+
+        def processEachTarg(i, input_list, output_list, apall_kws):
+          if verbose:
+            print('processing file '+str(i+1)+' of '+str(num_frames))
+
+          ir.apall(input_list[i], output=output_list[i],**apall_kws)
+
+        pool = mp.Pool(processes = num_processors)
+        pool.map( partial(processEachTarg,
+                          input_list  = list_proctarg,
+                          output_list = list_spectarg,
+                          apall_kws   = apall_kws),
+                  range(num_frames))
 
         # Recenter? YES
         # Resize? YES
@@ -732,14 +780,9 @@ if procData:
         ir.ecreidentify('@'+spectarg, meancal, database=_wldat, refit='no', shift=0)
 
         disp_soln = ns.getdisp(_wldat + os.sep + 'ec' + meancal)
-        if disp_soln[1]==[32,37]:
-            w    = ns.dispeval(disp_soln[0], disp_soln[1], disp_soln[2], shift=disp_soln[3])
-            w = w[::-1]
-        else:
-            raw_input('Wrong aperture order numbers calculated -- fit is suspect.'
-                      '  Press enter to continue.')
-            w    = ns.dispeval(disp_soln[0], disp_soln[1], disp_soln[2], shift=disp_soln[3])
-            w = w[::-1]
+
+        w = ns.dispeval(disp_soln[0], disp_soln[1], disp_soln[2], shift =disp_soln[3])
+        w = w[::-1]
         #w_interp = ns.wl_grid(w, dispersion, method='linear')
         w_interp = pyfits.getdata('winterp.fits')
         hdr_interp = pyfits.getheader(meancal+postfn)
@@ -832,7 +875,7 @@ if procData:
                 newdata[0,:,:] = newspec;
                 newdata[1,:,:] = newerr
                 hdr.update('TELLURIC', 'Telluric-corrected with file ' + _telluric)
-                pyfits.writeto(filename + 'tel' + postfn, newdata[:,::-1], header=hdr, clobber=True, output_verify='ignore')
+                pyfits.writeto(filename + 'tel' + postfn, newdata[:,::-1], header=hdr, overwrite=True, output_verify='ignore')
             filelist.close()
 
 
