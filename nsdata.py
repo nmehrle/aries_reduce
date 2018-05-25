@@ -1662,7 +1662,7 @@ def preprocess(*args, **kw):
                             xrange(num_to_preprocess))
                         )):
             pbar.update()
-
+        pbar.close()
         return
 
     elif (input.__class__==str) and (input[0]=='@'):
@@ -1694,7 +1694,7 @@ def preprocess(*args, **kw):
                             xrange(num_to_preprocess))
                         )):
             pbar.update()
-
+        pbar.close()
         fin.close()
         fout.close()
         return
