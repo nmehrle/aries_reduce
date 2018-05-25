@@ -1565,6 +1565,13 @@ def preprocess(*args, **kw):
         import pyfits
     
     from pyraf import iraf as ir
+    ir.prcacheOff()
+
+    import multiprocessing as mp
+    from functools import partial
+    from tqdm import tqdm
+    import io
+
     ir.load('crutil')
     # Parse inputs:
     if len(args)<2:
@@ -1581,7 +1588,8 @@ def preprocess(*args, **kw):
                         cleanec=False, clobber=False, verbose=False, \
                         cthreshold=300, cwindow=25, csigma=20, \
                         cleancr=False, rthreshold=300, rratio=5, \
-                    date='date-obs', time='UTC', dofix=True, corquad="", airmass='AIRMASS')
+                    date='date-obs', time='UTC', dofix=True, corquad="", airmass='AIRMASS', num_processors=1,
+                    pytifts_outverify = 'warn')
 
     for key in defaults:
         if (not kw.has_key(key)):
@@ -1594,6 +1602,15 @@ def preprocess(*args, **kw):
     clobber = bool(kw['clobber'])
     date = kw['date']
     time = kw['time']
+    num_processors = kw['num_processors']
+    pytifts_outverify = kw['pytifts_outverify']
+
+    if verbose:
+        print '-------------------------------'
+        print '\n\n'
+        print 'Starting Preprocess'
+        print '\n\n'
+        print '-------------------------------'
 
     if doflat:
         if(type(kw['flat']) == dict):
@@ -1615,8 +1632,9 @@ def preprocess(*args, **kw):
             kw['dark'] = kw['dark'] + '.fits'
             if not os.path.isfile(kw['dark']):
                 raise IOError("File " + kw['dark'] + " not found")
-    
-    if verbose: print "Keywords are:  "; print kw
+
+    if verbose:
+        print "Keywords are:  "; print kw
 
     # Check whether inputs are lists, filelists, or files:
 
@@ -1624,19 +1642,59 @@ def preprocess(*args, **kw):
         print "Files or file lists must be of same type.  Exiting..."
         return
     elif input.__class__==list:
-        for ii in range(len(input)):
-            if verbose: print "File list, file:  " + input[ii]
-            preprocess(input[ii], output[ii], **kw)
+        if verbose:
+            print '\n\nFile List - ' +input
+            print '\n\n'
+
+        pool = mp.Pool(processes = num_processors)
+        num_to_preprocess = len(inLines)
+
+        mp_kws = kw.copy()
+        mp_kws['verbose'] = False
+        mp_kws['pytifts_outverify'] = 'silentfix'
+
+        pbar = tqdm(total=num_to_preprocess)
+        for i,_ in tqdm(enumerate(pool.imap_unordered(
+                            partial(preprocessEach,
+                                    inLines  = inLines,
+                                    outLines = outLines,
+                                    kw       = mp_kws),
+                            xrange(num_to_preprocess))
+                        )):
+            pbar.update()
+
         return
+
     elif (input.__class__==str) and (input[0]=='@'):
         fin  = open(input[ 1::])
         fout = open(output[1::])
 
-        ## Don't flatten, bad-pixel correct, or cleanec the first time through:
+        inLines  = fin.readlines()
+        outLines = fout.readlines()
 
-        for line in fin:
-            if verbose: print "IRAF-style file list, file:  " + line.strip()
-            preprocess(line.strip(), fout.readline().strip(), **kw)
+        ## Don't flatten, bad-pixel correct, or cleanec the first time through:
+        if verbose:
+            print "\n\nIraf-style file list- "+input
+            print "\n\n"
+
+        pool = mp.Pool(processes = num_processors)
+        num_to_preprocess = len(inLines)
+
+        mp_kws = kw.copy()
+        mp_kws['verbose'] = False
+        mp_kws['pytifts_outverify'] = 'silentfix'
+
+
+        pbar = tqdm(total=num_to_preprocess)
+        for i,_ in tqdm(enumerate(pool.imap_unordered(
+                            partial(preprocessEach,
+                                    inLines  = inLines,
+                                    outLines = outLines,
+                                    kw       = mp_kws),
+                            xrange(num_to_preprocess))
+                        )):
+            pbar.update()
+
         fin.close()
         fout.close()
         return
@@ -1645,7 +1703,7 @@ def preprocess(*args, **kw):
     if kw['clobber'] and input!=output:
         ir.imdelete(output)
 
-    ir.imcopy(input, output)
+    ir.imcopy(input, output, verbose=verbose)
 
     # Deal with possible invalid FITS header keys:
     if not os.path.isfile(output):
@@ -1659,7 +1717,7 @@ def preprocess(*args, **kw):
             newkey = key.replace('.','_')
             hdulist[0].header[newkey] = hdulist[0].header[key]
             hdulist[0].header.remove(key)
-    hdulist.writeto(outputfn, clobber=True, output_verify='ignore')
+    hdulist.writeto(outputfn, overwrite=True, output_verify=pytifts_outverify)
 
     # I don't like IRAF.setjd because it gave me incorrect values.
     # Instead, use my own setjd from astrolib.py:
@@ -1681,7 +1739,7 @@ def preprocess(*args, **kw):
             gen_hdr, gen_data = interpolateFlatFrameFromAngle(kw['flat'],altitude)
             gen_flat = os.path.split(output)[0]+'/generated_flat.fits'
 
-            pyfits.writeto(gen_flat,gen_data,gen_hdr,output_verify='warn',overwrite='True')
+            pyfits.writeto(gen_flat,gen_data,gen_hdr,output_verify=pytifts_outverify, overwrite='True')
 
 
             ir.ccdproc(output, ccdtype="", fixpix="no", overscan="no",
@@ -1706,8 +1764,10 @@ def preprocess(*args, **kw):
         indiv_mask = output + 'imask.fits'
         cutoffmask(output, clobber=True, cutoff=[0, Inf], writeto=indiv_mask)
         #ir.imcalc(kw['mask'] + "," + indiv_mask, indiv_mask, "im1||im2")
-        pyfits.writeto(indiv_mask, np.logical_or(pyfits.getdata(kw['mask']), pyfits.getdata(indiv_mask)).astype(int), clobber=True, output_verify='warn')
+        pyfits.writeto(indiv_mask, np.logical_or(pyfits.getdata(kw['mask']), pyfits.getdata(indiv_mask)).astype(int), overwrite=True, output_verify=pytifts_outverify)
         if kw['dofix']:
+            save_stderr = sys.stderr
+            sys.stderr = io.BytesIO()
             try:
                 ir.ccdproc(output, ccdtype="", fixpix=dobfix, overscan="no",
                            trim="no", zerocor="no", darkcor="no", flatcor="no", 
@@ -1726,21 +1786,24 @@ def preprocess(*args, **kw):
                     mask_temp = pyfits.getdata(indiv_mask)
                 except:
                     mask_temp = pyfits.getdata(indiv_mask + '.fits')
-                bfixpix(output_temp, mask_temp, n=8)
-                pyfits.writeto(ofn, output_temp, header=ohdr, output_verify='warn', clobber=True)
-                print "Couldn't CCDPROC, but managed to BFIXPIX instead."
-                
+                output_temp = bfixpix(output_temp, mask_temp, n=8,retdat=True)
+                pyfits.writeto(ofn, output_temp, header=ohdr, output_verify=pytifts_outverify, overwrite=True)
+                if verbose:
+                    print "Couldn't CCDPROC, but managed to BFIXPIX instead."
+            sys.stderr = save_stderr
     if kw['cleancr']:
         ir.cosmicrays(output, output, threshold=kw['rthreshold'], fluxratio=kw['rratio'], \
                           npasses=5, interactive='no')
     if kw['cleanec']:
-        cleanec(output, output, npasses=1, verbose=verbose, threshold=kw['cthreshold'], \
-                    nsigma=kw['csigma'], window=kw['cwindow'], clobber=True)
+        cleanec(output, output, npasses=1, verbose=verbose, threshold=kw['cthreshold'], nsigma=kw['csigma'], window=kw['cwindow'], clobber=True)
 
-    if verbose: print "Successfully processed '" + input + \
-            "' into '" + output + "'\n\n"
+    if verbose:
+        print "Successfully processed '" + input + "' into '" + output + "'\n\n"
 
     return
+
+def preprocessEach(i,inLines,outLines,kw):
+    preprocess(inLines[i].strip(), outLines[i].strip(), **kw)
 
 def interpolateFlatFrameFromAngle(allflats, altitude):
     """ Generates flat field frame for a given altitude from dict of
@@ -2393,7 +2456,8 @@ def cleanec(input, output, **kw):
         for infile, outfile in zip(fin, fout):
             infile = infile.strip()
             outfile = outfile.strip()
-            if verbose: print "IRAF-style file list, file %s --> %s" % \
+            if verbose:
+                print "IRAF-style file list, file %s --> %s" % \
                     (infile.strip(), outfile.strip())
             cleanec(infile, outfile, **kw)
         fin.close()
@@ -2404,7 +2468,8 @@ def cleanec(input, output, **kw):
             ec = pyfits.getdata(input)
             hdr = pyfits.getheader(input)
         except:
-            print "Couldn't open file: %s -- adding .fits extension and re-trying" % input
+            if verbose:
+                print "Couldn't open file: %s -- adding .fits extension and re-trying" % input
             try:
                 input += '.fits'
                 if output.find('.fit')<0:
@@ -2474,17 +2539,17 @@ def cleanec(input, output, **kw):
         passNumber += 1
     
         if verbose: 
-          print 'pass %i complete'
+          print 'pass '+str(passNumber)+' complete'
     if hdr is None:
-        pyfits.writeto(output, ec, clobber=kw['clobber'], \
+        pyfits.writeto(output, ec, overwrite=kw['clobber'], \
                            output_verify='warn')
     else:
         hdr['cleanec'] ='echelleogram cleaned (%i passes) by nsdata.cleanec' % passNumber
-        pyfits.writeto(output, ec, clobber=kw['clobber'], header=hdr, \
+        pyfits.writeto(output, ec, overwrite=kw['clobber'], header=hdr, \
                            output_verify='warn')
 
     if kw['badmask'] is not None:
-        pyfits.writeto(kw['badmask'], (ec!=ec_original).astype(int), clobber=kw['clobber'], output_verify='warn')
+        pyfits.writeto(kw['badmask'], (ec!=ec_original).astype(int), overwrite=kw['clobber'], output_verify='warn')
         
     if verbose: print "CLEANEC complete, output to>>", output
     return 
@@ -2494,9 +2559,9 @@ def cleanec(input, output, **kw):
 
     
 def bfixpix(data, badmask, n=4, compact_nodes=True,
-            balanced_tree = False, n_jobs=-1, eps=0, retdat=True):
+            balanced_tree = False, n_jobs=-1, eps=0, retdat=False):
     """Replace pixels flagged as nonzero in a bad-pixel mask with the
-    average of their nearest four good neighboring pixels.
+    average of their nearest n good neighboring pixels.
 
     :INPUTS:
       data : numpy array (two-dimensional)
@@ -2547,7 +2612,6 @@ def bfixpix(data, badmask, n=4, compact_nodes=True,
     ret[tuple(badpix[:,0]), tuple(badpix[:,1])] = interp_values
 
     return ret
-    
 
 def posofend(str1, str2):
     """returns the position immediately _after_ the end of the occurence
