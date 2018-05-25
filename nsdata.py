@@ -795,7 +795,7 @@ def interp_spec(filename, w, w_interp, suffix='int', k=1, APNUM_keyword='APNUM',
         irafheader['BANDID'+str(n_bands+1)] = 'lambda - reinterpolated wavelengths (IJC)'
         irafheader['WLINTERP'] =  'Reinterpolated! (IJC)'
         irafheader['BADVAL'] = badval
-        pyfits.writeto(filename.replace('.fits','')+suffix+'.fits', s_interp, header=irafheader, clobber=clobber, output_verify='ignore')
+        pyfits.writeto(filename.replace('.fits','')+suffix+'.fits', s_interp, header=irafheader, overwrite=clobber, output_verify='ignore')
 
 
     return goodResult
@@ -1484,7 +1484,7 @@ def fix_quadnoise(*args, **kw):
         initpath = '.'
     outfn = initpath + os.sep + prefix + os.path.split(file)[1]
     if verbose: print "Writing file..." + outfn
-    pyfits.writeto(outfn, data, hdr, clobber=clobber, output_verify='ignore')
+    pyfits.writeto(outfn, data, hdr, overwrite=clobber, output_verify='ignore')
 
     return
 
@@ -2004,7 +2004,7 @@ def setjd(filename, **kw):
         if 'FREQ.SPE' in hdulist[0].header:
             junk = hdulist[0].header['FREQ.SPE']
             print hdulist[0].header['GAIN.SPE']
-        hdulist.writeto(filename, output_verify='ignore', clobber=True)
+        hdulist.writeto(filename, output_verify='ignore', overwrite=True)
     return
 
 def linespec(loc, ew, win, **kw):
@@ -3315,7 +3315,7 @@ def correct_aries_crosstalk(input, **kw):
         print "WARNING, did not find expected output file '%s'. Something went wrong!" % output
     pyhdr = pyfits.open(output)
     pyhdr[0].header['quadnois'] = 'ARIES crosstalk fixed by nsdata.correct_aries_crosstalk'
-    pyhdr.writeto(output, clobber=True, output_verify='silentfix')
+    pyhdr.writeto(output, overwrite=True, output_verify='silentfix')
     os.chdir(dir0)
     return
 
