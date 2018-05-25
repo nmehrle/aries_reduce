@@ -76,6 +76,7 @@ import numpy as ny
 from pylab import find
 import pdb
 import multiprocessing as mp
+from tqdm import tqdm
 from functools import partial
 
 ################################################################
@@ -102,8 +103,11 @@ processCal  = False
 calApp      = False
 
 # Target Frames
-preProcTarg = True
-processTarg = False
+preProcTarg = False
+processTarg = True
+
+# Telluric Correction
+telluricCorrect = False
 
 #Treats flats as altitude dependent if possible
 angledFlats = True
@@ -744,35 +748,20 @@ if procData:
           't_function'  : 'chebyshev'
         }
 
-        def processEachTarg(i, input_list, output_list, apall_kws):
-          if verbose:
-            print('processing file '+str(i+1)+' of '+str(num_frames))
+        def processEachTarg(i, input_list, output_list, apall_kws): 
+            ir.apall(input_list[i], output=output_list[i],**apall_kws)
 
-          ir.apall(input_list[i], output=output_list[i],**apall_kws)
-
+        pbar = tqdm(total = num_frames)
         pool = mp.Pool(processes = num_processors)
-        pool.map( partial(processEachTarg,
-                          input_list  = list_proctarg,
-                          output_list = list_spectarg,
-                          apall_kws   = apall_kws),
-                  range(num_frames))
 
-        # Recenter? YES
-        # Resize? YES
-        # EDIT? NO
-        # Trace? NO
-        # Write? YES
-        # Extract? YES
-        # Review? NO
-
-
-        #End Attempt
-
-        # #before batch attempt
-        # ir.imdelete('@'+spectarg)
-        # ir.apall('@'+proctarg, output='@'+spectarg, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')
-        # #End before
-        
+        for i,_ in tqdm(enumerate(pool.imap_unordered(
+                        partial(processEachTarg,
+                              input_list  = list_proctarg,
+                              output_list = list_spectarg,
+                              apall_kws   = apall_kws),
+                        xrange(num_frames)))):
+            pbar.update()
+        pbar.close()
         if verbose:  print "Done extracting spectra from target stars!"
         
         # Sample each aperture so that they all have equal pixel widths
@@ -788,96 +777,111 @@ if procData:
         hdr_interp = pyfits.getheader(meancal+postfn)
 
         filelist = open(spectarg)
-        for line in filelist:
-            filename = line.strip()
+        lines    = filelist.readlines()
+
+        def interp_single_spec(i, lines):
+            filename = lines[i].strip()
             disp_new = ns.getdisp(_wldat+'/ec' + filename)
-            w_new = ns.dispeval(disp_new[0], disp_new[1], disp_new[2], shift=disp_new[3])
+            w_new    = ns.dispeval(disp_new[0], disp_new[1], disp_new[2], shift=disp_new[3])
             w_new = w_new[::-1]
-            ns.interp_spec(filename, w_new, w_interp, k=3.0, suffix='int', badval=badval, clobber=True, verbose=verbose)
+            ns.interp_spec(filename, w_new, w_interp, k=3.0, suffix='int', badval=badval, clobber=True, verbose=False)
+
+        pbar = tqdm(total = len(lines))
+        pool = mp.Pool(processes = num_processors)
+
+        if verbose:
+            print('\nUpsampling Spectra\n')
+
+        for i,_ in tqdm(enumerate(pool.imap_unordered(
+                        partial(interp_single_spec,
+                                lines=lines),
+                        xrange(len(lines))))):
+            pbar.update()
+        pbar.close()
         filelist.close()
         
+if telluricCorrect:
+    # Write target and Mean Standard to text files for telluric correction:
+    # Should be looped over
+    ns.wspectext(filename + 'int', wlsort=True)
+    ns.wspectext(meancal  + 'int', wlsort=True)
 
+    print 'Instructions for IDL XTELLCOR:\n'
+    print 'Std Spectra is: ' + meancal
+    print 'Obj Spectra is: ' + filename
+    print 'Units need to be set to Angstroms!  Remove the 2.166 um feature. '
+    print 'Make sure to get the velocity shift correction correctly.'
+    print 'At the end, make sure you write out both Telluric and A0V files.'
+    sys.stdout.flush()
+    os.system('cd ' + _proc + '\n' + idlexec + ' -e xtellcor_general')
 
-        # Write target and Mean Standard to text files for telluric correction:
-        ns.wspectext(filename + 'int', wlsort=True)
-        ns.wspectext(meancal  + 'int', wlsort=True)
-
-        print 'Instructions for IDL XTELLCOR:\n'
-        print 'Std Spectra is: ' + meancal 
-        print 'Obj Spectra is: ' + filename
-        print 'Units need to be set to Angstroms!  Remove the 2.166 um feature. '
-        print 'Make sure to get the velocity shift correction correctly.'
-        print 'At the end, make sure you write out both Telluric and A0V files.'
-        sys.stdout.flush()
-        os.system('cd ' + _proc + '\n' + idlexec + ' -e xtellcor_general')
-
-        # Get telluric filename:
-        _telluric = ''
-        while (not os.path.isfile(_telluric)) and _telluric!='q':
-            temp = os.listdir('.')
-            print '\n\nEnter the telluric filename (q to quit); path is unnecessary if\n you saved it in the processed-data directory.  Local possibilities:'
-            for element in temp:
-                if element.find('tellspec')>-1: print element
-            _telluric = raw_input('Filename:   ')
+    # Get telluric filename:
+    _telluric = ''
+    while (not os.path.isfile(_telluric)) and _telluric!='q':
+        temp = os.listdir('.')
+        print '\n\nEnter the telluric filename (q to quit); path is unnecessary if\n you saved it in the processed-data directory.  Local possibilities:'
+        for element in temp:
+            if element.find('tellspec')>-1: print element
+        _telluric = raw_input('Filename:   ')
+    
+    if _telluric=='q':
+        pass
+    else:
+        # Read telluric file; put in the right format.
+        objspec_telcor = ny.loadtxt(_telluric.replace('_tellspec', ''))
+        objspec_raw = ny.loadtxt(filename + 'int.dat')
         
-        if _telluric=='q':
-            pass
-        else:
-            # Read telluric file; put in the right format.
-            objspec_telcor = ny.loadtxt(_telluric.replace('_tellspec', ''))
-            objspec_raw = ny.loadtxt(filename + 'int.dat')
-            
-            
-            infile = open(_telluric, 'r')
-            data = [map(float,line.split()) for line in infile]
-            infile.close()
-            n = len(data)
-            data = ny.array(data).ravel().reshape(n, 3)
-            telluric = data.transpose().reshape(3, n_ap, n/n_ap)
-            telluric = telluric[1:3,:,:]
-            tl_shape = telluric.shape
-            telluric = telluric.ravel()
-            nanind = find(isnan(telluric))
-            infind = find(isinf(telluric))
+        
+        infile = open(_telluric, 'r')
+        data = [map(float,line.split()) for line in infile]
+        infile.close()
+        n = len(data)
+        data = ny.array(data).ravel().reshape(n, 3)
+        telluric = data.transpose().reshape(3, n_ap, n/n_ap)
+        telluric = telluric[1:3,:,:]
+        tl_shape = telluric.shape
+        telluric = telluric.ravel()
+        nanind = find(isnan(telluric))
+        infind = find(isinf(telluric))
+        ind = ny.concatenate((nanind, infind))
+        telluric[ind] = badval
+        telluric = telluric.reshape(tl_shape)
+
+        telluric2 = objspec_raw[:,1] / objspec_telcor[:,1]
+        telluric2_err = telluric2 * ny.sqrt((objspec_raw[:,2]/objspec_raw[:,1])**2 + (objspec_telcor[:,2]/objspec_telcor[:,1])**2)
+        telluric2_err[np.logical_not(np.isfinite(telluric2))] = badval
+        telluric2[np.logical_not(np.isfinite(telluric2))] = badval
+        telluric2_err /= np.median(telluric2)
+        telluric2 /= np.median(telluric2)
+        invtelluric3 = np.vstack((telluric2, telluric2_err)).reshape(tl_shape)
+        
+        tel_scalefac = np.median(telluric)
+        telluric = telluric / tel_scalefac
+
+
+        # Divide all target frames by the telluric corrector:
+        filelist = open(spectarg)
+        for line in filelist:
+            filename = line.strip() + 'int' 
+            hdr  = pyfits.getheader(filename + postfn)
+            data = pyfits.getdata(  filename + postfn)
+            data = data[ [0,-2], ::-1, :]
+            newdata = ny.zeros(data.shape)
+            newspec = data[0,:,:] * telluric[0,:,:]
+            ns_shape = newspec.shape
+            tempdata = newspec.ravel()
+            nanind = find(isnan(tempdata))
+            infind = find(isinf(tempdata))
             ind = ny.concatenate((nanind, infind))
-            telluric[ind] = badval
-            telluric = telluric.reshape(tl_shape)
-
-            telluric2 = objspec_raw[:,1] / objspec_telcor[:,1]
-            telluric2_err = telluric2 * ny.sqrt((objspec_raw[:,2]/objspec_raw[:,1])**2 + (objspec_telcor[:,2]/objspec_telcor[:,1])**2)
-            telluric2_err[np.logical_not(np.isfinite(telluric2))] = badval
-            telluric2[np.logical_not(np.isfinite(telluric2))] = badval
-            telluric2_err /= np.median(telluric2)
-            telluric2 /= np.median(telluric2)
-            invtelluric3 = np.vstack((telluric2, telluric2_err)).reshape(tl_shape)
-            
-            tel_scalefac = np.median(telluric)
-            telluric = telluric / tel_scalefac
-
-
-            # Divide all target frames by the telluric corrector:
-            filelist = open(spectarg)
-            for line in filelist:
-                filename = line.strip() + 'int' 
-                hdr  = pyfits.getheader(filename + postfn)
-                data = pyfits.getdata(  filename + postfn)
-                data = data[ [0,-2], ::-1, :]
-                newdata = ny.zeros(data.shape)
-                newspec = data[0,:,:] * telluric[0,:,:]
-                ns_shape = newspec.shape
-                tempdata = newspec.ravel()
-                nanind = find(isnan(tempdata))
-                infind = find(isinf(tempdata))
-                ind = ny.concatenate((nanind, infind))
-                tempdata[ind] = badval
-                newspec = tempdata.reshape(ns_shape)
-                newerr  = newspec * ny.sqrt((data[1,:,:]/data[0,:,:])**2 + (telluric[1,:,:]/telluric[0,:,:])**2)
-                newdata[0,:,:] = newspec;
-                newdata[1,:,:] = newerr
-                hdr.update('TELLURIC', 'Telluric-corrected with file ' + _telluric)
-                pyfits.writeto(filename + 'tel' + postfn, newdata[:,::-1], header=hdr, overwrite=True, output_verify='ignore')
-            filelist.close()
+            tempdata[ind] = badval
+            newspec = tempdata.reshape(ns_shape)
+            newerr  = newspec * ny.sqrt((data[1,:,:]/data[0,:,:])**2 + (telluric[1,:,:]/telluric[0,:,:])**2)
+            newdata[0,:,:] = newspec;
+            newdata[1,:,:] = newerr
+            hdr.update('TELLURIC', 'Telluric-corrected with file ' + _telluric)
+            pyfits.writeto(filename + 'tel' + postfn, newdata[:,::-1], header=hdr, overwrite=True, output_verify='ignore')
+        filelist.close()
 
 
 os.chdir(dir0)
-print "... and we're done!"
+print "\n... and we're done!"
