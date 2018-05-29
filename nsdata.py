@@ -1767,10 +1767,22 @@ def preprocess(*args, **kw):
         # some negative-valued pixels manage to make it through the
         # cleaning pipeline.
         indiv_mask = output + 'imask.fits'
-        cutoffmask(output, clobber=True, cutoff=[0, Inf], writeto=indiv_mask)
-        #ir.imcalc(kw['mask'] + "," + indiv_mask, indiv_mask, "im1||im2")
-        indiv_mask_data = np.logical_or(pyfits.getdata(kw['mask']), pyfits.getdata(indiv_mask)).astype(int)
-        
+
+        try:
+            output_temp = pyfits.getdata(output)
+            ohdr = pyfits.getheader(output)
+            ofn = output + ''
+        except:
+            output_temp = pyfits.getdata(output + '.fits')
+            ohdr = pyfits.getheader(output + '.fits')
+            ofn = output + '.fits'
+
+        # Inline version of cutoffmask()
+        cutoff = [0, Inf]
+        cMask = (output_temp < cutoff[0]) + (output_temp > cutoff[1])
+
+        indiv_mask_data = np.logical_or(pyfits.getdata(kw['mask']), cMask).astype(int)
+
         if kw['dofix']:
             if tryIRccdproc:
                 pyfits.writeto(indiv_mask, indiv_mask_data, overwrite=True, output_verify=pytifts_outverify)
@@ -1783,15 +1795,6 @@ def preprocess(*args, **kw):
                                flat=None, fixfile=indiv_mask,
                                minreplace=0.25, interactive="no")
                 except:
-                    try:
-                        output_temp = pyfits.getdata(output)
-                        ohdr = pyfits.getheader(output)
-                        ofn = output + ''
-                    except:
-                        output_temp = pyfits.getdata(output + '.fits')
-                        ohdr = pyfits.getheader(output + '.fits')
-                        ofn = output + '.fits'
-                    
                     output_temp = bfixpix(output_temp, indiv_mask_data, n=8,retdat=True)
                     pyfits.writeto(ofn, output_temp, header=ohdr, output_verify=pytifts_outverify, overwrite=True)
                     if verbose:
@@ -1801,14 +1804,6 @@ def preprocess(*args, **kw):
                 if not saveBadMask:
                     ir.delete(indiv_mask)
             else:
-                try:
-                    output_temp = pyfits.getdata(output)
-                    ohdr = pyfits.getheader(output)
-                    ofn = output + ''
-                except:
-                    output_temp = pyfits.getdata(output + '.fits')
-                    ohdr = pyfits.getheader(output + '.fits')
-                    ofn = output + '.fits'
                 output_temp = bfixpix(output_temp, indiv_mask_data, n=8,retdat=True)
                 pyfits.writeto(ofn, output_temp, header=ohdr, output_verify=pytifts_outverify, overwrite=True)
                 if saveBadMask:
