@@ -1589,7 +1589,8 @@ def preprocess(*args, **kw):
                         cthreshold=300, cwindow=25, csigma=20, \
                         cleancr=False, rthreshold=300, rratio=5, \
                     date='date-obs', time='UTC', dofix=True, corquad="", airmass='AIRMASS', num_processors=1,
-                    pytifts_outverify = 'warn', saveBadMask=True)
+                    pytifts_outverify = 'warn', saveBadMask=True,
+                    tryIRccdproc=True)
 
     for key in defaults:
         if (not kw.has_key(key)):
@@ -1605,6 +1606,7 @@ def preprocess(*args, **kw):
     num_processors = kw['num_processors']
     pytifts_outverify = kw['pytifts_outverify']
     saveBadMask     = kw['saveBadMask']
+    tryIRccdproc    = kw['tryIRccdproc']
 
     if verbose:
         print '-------------------------------'
@@ -1767,16 +1769,38 @@ def preprocess(*args, **kw):
         indiv_mask = output + 'imask.fits'
         cutoffmask(output, clobber=True, cutoff=[0, Inf], writeto=indiv_mask)
         #ir.imcalc(kw['mask'] + "," + indiv_mask, indiv_mask, "im1||im2")
-        pyfits.writeto(indiv_mask, np.logical_or(pyfits.getdata(kw['mask']), pyfits.getdata(indiv_mask)).astype(int), overwrite=True, output_verify=pytifts_outverify)
+        indiv_mask_data = np.logical_or(pyfits.getdata(kw['mask']), pyfits.getdata(indiv_mask)).astype(int)
+        
         if kw['dofix']:
-            save_stderr = sys.stderr
-            sys.stderr = io.BytesIO()
-            try:
-                ir.ccdproc(output, ccdtype="", fixpix=dobfix, overscan="no",
-                           trim="no", zerocor="no", darkcor="no", flatcor="no", 
-                           flat=None, fixfile=indiv_mask,
-                           minreplace=0.25, interactive="no")
-            except:
+            if tryIRccdproc:
+                pyfits.writeto(indiv_mask, indiv_mask_data, overwrite=True, output_verify=pytifts_outverify)
+                if not verbose:
+                    save_stderr = sys.stderr
+                    sys.stderr = io.BytesIO()
+                try:
+                    ir.ccdproc(output, ccdtype="", fixpix=dobfix, overscan="no",
+                               trim="no", zerocor="no", darkcor="no", flatcor="no", 
+                               flat=None, fixfile=indiv_mask,
+                               minreplace=0.25, interactive="no")
+                except:
+                    try:
+                        output_temp = pyfits.getdata(output)
+                        ohdr = pyfits.getheader(output)
+                        ofn = output + ''
+                    except:
+                        output_temp = pyfits.getdata(output + '.fits')
+                        ohdr = pyfits.getheader(output + '.fits')
+                        ofn = output + '.fits'
+                    
+                    output_temp = bfixpix(output_temp, indiv_mask_data, n=8,retdat=True)
+                    pyfits.writeto(ofn, output_temp, header=ohdr, output_verify=pytifts_outverify, overwrite=True)
+                    if verbose:
+                        print "Couldn't CCDPROC, but managed to BFIXPIX instead."
+                if not verbose:
+                    sys.stderr = save_stderr
+                if not saveBadMask:
+                    ir.delete(indiv_mask)
+            else:
                 try:
                     output_temp = pyfits.getdata(output)
                     ohdr = pyfits.getheader(output)
@@ -1785,15 +1809,13 @@ def preprocess(*args, **kw):
                     output_temp = pyfits.getdata(output + '.fits')
                     ohdr = pyfits.getheader(output + '.fits')
                     ofn = output + '.fits'
-                try:
-                    mask_temp = pyfits.getdata(indiv_mask)
-                except:
-                    mask_temp = pyfits.getdata(indiv_mask + '.fits')
-                output_temp = bfixpix(output_temp, mask_temp, n=8,retdat=True)
+                output_temp = bfixpix(output_temp, indiv_mask_data, n=8,retdat=True)
                 pyfits.writeto(ofn, output_temp, header=ohdr, output_verify=pytifts_outverify, overwrite=True)
-                if verbose:
-                    print "Couldn't CCDPROC, but managed to BFIXPIX instead."
-            sys.stderr = save_stderr
+                if saveBadMask:
+                    pyfits.writeto(indiv_mask, indiv_mask_data, overwrite=True, output_verify=pytifts_outverify)
+
+
+            
     if kw['cleancr']:
         ir.cosmicrays(output, output, threshold=kw['rthreshold'], fluxratio=kw['rratio'], \
                           npasses=5, interactive='no')
@@ -1802,9 +1824,6 @@ def preprocess(*args, **kw):
 
     if verbose:
         print "Successfully processed '" + input + "' into '" + output + "'\n\n"
-
-    if saveBadMask == False:
-        ir.delete(indiv_mask)
 
     return
 

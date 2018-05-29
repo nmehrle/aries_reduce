@@ -630,7 +630,7 @@ if preProcData:
             csigma=csigma, cthreshold=cthreshold,
             cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
             date=date, time=time, dofix=dofix, corquad=_corquad,
-            num_processors=num_processors, saveBadMask=saveBadMask)
+            num_processors=num_processors, saveBadMask=saveBadMask, tryIRccdproc=False)
 
     if preProcTarg:
         ns.write_exptime(rawtarg, itime=itime)
@@ -642,7 +642,7 @@ if preProcData:
             csigma=csigma, cthreshold=cthreshold,
             cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
             date=date, time=time, dofix=dofix, corquad=_corquad,
-            num_processors=num_processors, saveBadMask=saveBadMask)
+            num_processors=num_processors, saveBadMask=saveBadMask,tryIRccdproc=False)
 
     if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
 
