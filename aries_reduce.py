@@ -60,7 +60,7 @@ import os, sys, shutil
 from pyraf import iraf as ir
 ir.prcacheOff()
 # Might be necessary for some iraf tasks with multiprocessing, unsure
-# ir.set(writepars=0)
+ir.set(writepars=0)
 
 
 from scipy import interpolate, isnan, isinf
@@ -105,6 +105,12 @@ calApp      = False
 # Target Frames
 preProcTarg = False
 processTarg = True
+
+# WhatToSave
+saveBadMask        = False
+saveCorrectedImg   = False #(Output of Preprocess)
+saveUnInterpolated = False
+
 
 # Telluric Correction
 telluricCorrect = False
@@ -624,7 +630,7 @@ if preProcData:
             csigma=csigma, cthreshold=cthreshold,
             cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
             date=date, time=time, dofix=dofix, corquad=_corquad,
-            num_processors=num_processors)
+            num_processors=num_processors, saveBadMask=saveBadMask)
 
     if preProcTarg:
         ns.write_exptime(rawtarg, itime=itime)
@@ -636,7 +642,7 @@ if preProcData:
             csigma=csigma, cthreshold=cthreshold,
             cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
             date=date, time=time, dofix=dofix, corquad=_corquad,
-            num_processors=num_processors)
+            num_processors=num_processors, saveBadMask=saveBadMask)
 
     if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
 
@@ -750,6 +756,8 @@ if procData:
 
         def processEachTarg(i, input_list, output_list, apall_kws): 
             ir.apall(input_list[i], output=output_list[i],**apall_kws)
+            if saveCorrectedImg == False:
+                ir.imdelete(input_list[i])
 
         pbar = tqdm(total = num_frames)
         pool = mp.Pool(processes = num_processors)
@@ -785,6 +793,8 @@ if procData:
             w_new    = ns.dispeval(disp_new[0], disp_new[1], disp_new[2], shift=disp_new[3])
             w_new = w_new[::-1]
             ns.interp_spec(filename, w_new, w_interp, k=3.0, suffix='int', badval=badval, clobber=True, verbose=False)
+            if saveUnInterpolated == False:
+                ir.imdelete(filename)
 
         pbar = tqdm(total = len(lines))
         pool = mp.Pool(processes = num_processors)
@@ -797,6 +807,7 @@ if procData:
                                 lines=lines),
                         xrange(len(lines))))):
             pbar.update()
+
         pbar.close()
         filelist.close()
         

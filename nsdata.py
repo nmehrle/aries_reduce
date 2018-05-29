@@ -1589,7 +1589,7 @@ def preprocess(*args, **kw):
                         cthreshold=300, cwindow=25, csigma=20, \
                         cleancr=False, rthreshold=300, rratio=5, \
                     date='date-obs', time='UTC', dofix=True, corquad="", airmass='AIRMASS', num_processors=1,
-                    pytifts_outverify = 'warn')
+                    pytifts_outverify = 'warn', saveBadMask=True)
 
     for key in defaults:
         if (not kw.has_key(key)):
@@ -1604,6 +1604,7 @@ def preprocess(*args, **kw):
     time = kw['time']
     num_processors = kw['num_processors']
     pytifts_outverify = kw['pytifts_outverify']
+    saveBadMask     = kw['saveBadMask']
 
     if verbose:
         print '-------------------------------'
@@ -1737,7 +1738,9 @@ def preprocess(*args, **kw):
             airmass = hdulist[0].header[kw['airmass']]
             altitude = convertAirmassToAltitude(airmass)
             gen_hdr, gen_data = interpolateFlatFrameFromAngle(kw['flat'],altitude)
-            gen_flat = os.path.split(output)[0]+'/generated_flat.fits'
+
+            fileID = output.split('/')[-1].split('_')[1][:4]
+            gen_flat = os.path.split(output)[0]+'/generated_flat_' + fileID + '.fits'
 
             pyfits.writeto(gen_flat,gen_data,gen_hdr,output_verify=pytifts_outverify, overwrite='True')
 
@@ -1799,6 +1802,9 @@ def preprocess(*args, **kw):
 
     if verbose:
         print "Successfully processed '" + input + "' into '" + output + "'\n\n"
+
+    if saveBadMask == False:
+        ir.delete(indiv_mask)
 
     return
 
