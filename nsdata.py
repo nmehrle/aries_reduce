@@ -1727,9 +1727,7 @@ def preprocess(*args, **kw):
     setjd(output, date=date, time=time, jd='JD', hjd='HJD')
     if kw['qfix']:
         if 'aries' in str(kw['qfix']).lower():
-            correct_aries_crosstalk(output, clobber=clobber,corquad=kw['corquad'])
-            #ir.hedit(output, 'quadnois', \
-            #         'ARIES crosstalk fixed by nsdata.correct_aries_crosstalk', add='YES', update='YES')
+            correct_aries_crosstalk(output, clobber=clobber,corquad=kw['corquad'],verbose=verbose)
         else:
             fix_quadnoise(output, prefix=kw['qpref'],clobber=clobber)
             ir.hedit(output, 'quadnois', \
@@ -3316,27 +3314,47 @@ def correct_aries_crosstalk(input, **kw):
     if clobber and input!=output:
         ir.imdelete(output)
 
+
     input = findfitsfile(input)
-    if '.fits' not in output: output += '.fits'
-    dir0 = os.getcwd()
+    if '.fits' not in output:
+        output += '.fits'
+
+    pwd = os.getcwd()
     input_path, input_filename = os.path.split(input)
     output_path, output_filename = os.path.split(output)
     corquad_exec = os.path.split(corquad)[1]
     execstr = './%s %s' % (corquad_exec, input_filename)
-    if verbose: print "Executing: '%s'..." % execstr
-    shutil.copy(corquad, input_path)
-    os.chdir(input_path)
+
+
+
+    if not os.path.isfile(pwd+'/'+corquad_exec):
+        shutil.copy(corquad, pwd)
+
+
+    # Move input to pwd, run corquad
+    # Move input to input_path, output to output_path
+    os.rename(input, pwd+'/'+input_filename)
     os.system(execstr)
+    if verbose: 
+        print "Executing: '%s'..." % execstr
+    os.rename(pwd+'/'+input_filename, input)
+
+    # Check corquad ran
     if os.path.isfile('q' + input_filename):
         os.rename('q'+input_filename, output)
     else:
         print "WARNING, did not find expected file 'q%s'. corquad might have failed." % input_filename
+
+    # Check output is there
+    # Does not necessarily mean corquad has run
+    # If output, input have same name, isn't helpful
     if not os.path.isfile(output):
         print "WARNING, did not find expected output file '%s'. Something went wrong!" % output
+
     pyhdr = pyfits.open(output)
     pyhdr[0].header['quadnois'] = 'ARIES crosstalk fixed by nsdata.correct_aries_crosstalk'
     pyhdr.writeto(output, overwrite=True, output_verify='silentfix')
-    os.chdir(dir0)
+
     return
 
 def findfitsfile(filename, suffix='.fits'):
