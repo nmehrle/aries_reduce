@@ -1590,7 +1590,7 @@ def preprocess(*args, **kw):
                         cleancr=False, rthreshold=300, rratio=5, \
                     date='date-obs', time='UTC', dofix=True, corquad="", airmass='AIRMASS', num_processors=1,
                     pytifts_outverify = 'warn', saveBadMask=True,
-                    tryIRccdproc=True)
+                    tryIRccdproc=True, badPixMethod='Median')
 
     for key in defaults:
         if (not kw.has_key(key)):
@@ -1607,6 +1607,7 @@ def preprocess(*args, **kw):
     pytifts_outverify = kw['pytifts_outverify']
     saveBadMask     = kw['saveBadMask']
     tryIRccdproc    = kw['tryIRccdproc']
+    badPixMethod      = kw['badPixMethod']
 
     if verbose:
         print '-------------------------------'
@@ -1793,7 +1794,7 @@ def preprocess(*args, **kw):
                                flat=None, fixfile=indiv_mask,
                                minreplace=0.25, interactive="no")
                 except:
-                    output_temp = bfixpix(output_temp, indiv_mask_data, n=8,retdat=True)
+                    output_temp = bfixpix(output_temp, indiv_mask_data, n=8,retdat=True,method=badPixMethod)
                     pyfits.writeto(ofn, output_temp, header=ohdr, output_verify=pytifts_outverify, overwrite=True)
                     if verbose:
                         print "Couldn't CCDPROC, but managed to BFIXPIX instead."
@@ -1802,7 +1803,7 @@ def preprocess(*args, **kw):
                 if not saveBadMask:
                     ir.delete(indiv_mask)
             else:
-                output_temp = bfixpix(output_temp, indiv_mask_data, n=8,retdat=True)
+                output_temp = bfixpix(output_temp, indiv_mask_data, n=8,retdat=True,method=badPixMethod)
                 pyfits.writeto(ofn, output_temp, header=ohdr, output_verify=pytifts_outverify, overwrite=True)
                 if saveBadMask:
                     pyfits.writeto(indiv_mask, indiv_mask_data, overwrite=True, output_verify=pytifts_outverify)
@@ -2576,7 +2577,7 @@ def cleanec(input, output, **kw):
 #ir.crmed(f12, f12.replace('fn.fits', 'fn2.fits'), ncmed=15, nlmed=1, ncsig = 25, nlsig = 10, crmask='', median='', sigma='', residual='')
 
     
-def bfixpix(data, badmask, n=4, compact_nodes=True,
+def bfixpix(data, badmask, n=4, method = 'Mean', compact_nodes=True,
             balanced_tree = False, n_jobs=-1, eps=0, retdat=False):
     """Replace pixels flagged as nonzero in a bad-pixel mask with the
     average of their nearest n good neighboring pixels.
@@ -2585,6 +2586,12 @@ def bfixpix(data, badmask, n=4, compact_nodes=True,
       data : numpy array (two-dimensional)
 
       badmask : numpy array (same shape as data)
+
+      method : Which interpolation method to use:
+            Supported Methods:
+                Mean: average of nearby points
+                Median: median of nearby points
+                Linear: Mean of nearby points weighted by inverse distance
 
       rest: kdtree inputs
 
@@ -2625,7 +2632,15 @@ def bfixpix(data, badmask, n=4, compact_nodes=True,
     dd,ii = tree.query(badpix,n,eps=eps,n_jobs=n_jobs)
 
     all_neighbors = goodpix[ii].transpose(0,2,1)
-    interp_values = np.mean([data[neighbors[0],neighbors[1]] for neighbors in all_neighbors],1)
+
+    if method.lower().strip()   == 'mean':
+        interp_values = np.mean([data[neighbors[0],neighbors[1]] for neighbors in all_neighbors],1)
+    elif method.lower().strip() == 'median':
+        interp_values = np.median([data[neighbors[0],neighbors[1]] for neighbors in all_neighbors],1)
+    elif method.lower().strip() == 'linear':
+        interp_values = np.average([data[neighbors[0],neighbors[1]] for neighbors in all_neighbors],1,1/dd)
+    else:
+        raise ValueError("Method argument not valid. Supported methods are: Mean, Median, Linear")
 
     ret[tuple(badpix[:,0]), tuple(badpix[:,1])] = interp_values
 
