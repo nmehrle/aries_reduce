@@ -64,11 +64,12 @@ def addToDb(dbname):
 
   data['planet']       = 'Upsilon Andromedae b'
   data['prefix']       = 'spec_'
-  # data['framelist']    = range(105,115+1) + range(525,535+1) + range(885,895+1) + range(1230,1240+1) + range(1580,1590) + range(2125,2130) + range(2131,2135+1) + range(2845,2855+1) + range(3200,3210+1) + range(3610,3620+1)+range(3814,3824+1)
-  data['framelist']   = [105]
-  # data['framelist'] = range(1236,1240+1) + range(1580,1590) + range(2125,2135+1) + range(2845,2855+1) + range(3200,3210+1) + range(3610,3620+1)+range(3814,3824+1)
-  # Stopped at 1237 last time. i.e. do 1237+
-  # kill ccdproc attempt
+
+  # Full Range
+  data['fullframelist'] = range(73,3824+1)
+  data['framelist']    = range(73,80+1)
+
+
   data['flatlist']     = {
                             90: range(13,37+1)+range(68,70+1),
                             85: [45,67],

@@ -106,13 +106,22 @@ calApp      = False
 preProcTarg = False
 processTarg = True
 
+# find target aperatures from full data list.
+
+
+# Should only need to be run once for each dataset
+idTargAperatures = False
+
+# SaveAsPickleFiles
+pickleFiles = True
+
 # WhatToSave
 # For PreprocessTarg
 saveBadMask        = False
 
 # For ProcessTarg
-saveCorrectedImg   = False #(Output of Preprocess)
-saveUnInterpolated = False
+saveCorrectedImg   = True #(Output of Preprocess)
+saveUnInterpolated = True
 
 
 # Telluric Correction
@@ -142,7 +151,6 @@ flat_threshold = 500
 num_processors = -1
 
 dir0 = os.getcwd()
-
 
 if local:
     _iraf = ns._home + "/iraf/"
@@ -356,7 +364,7 @@ if True:
     proctarg = ns.strl2f(_proc+'proctarg', obs['proctargfilelist'], clobber=True)
     speccal  = ns.strl2f(_proc+'speccal',  obs['speccalfilelist'], clobber=True)
     spectarg = ns.strl2f(_proc+'spectarg', obs['spectargfilelist'], clobber=True)
-
+    fullproctarg = ns.strl2f(_proc+'fullproctarg', obs['fullproctargfilelist'], clobber=True)
 
     meancal  =  prefn + 'avgcal'
 
@@ -704,26 +712,25 @@ if procData:
     ##########################################
 
     if processTarg:
-        # Attempting batch processing
 
-        # We take the median dataFrame and identify/trace aperatures on it
-        # We then pass this as a reference to apall on all data frames
-        _targap  = _proc+prefn+"_targap"
-        _targaps = _proc+prefn+"_targaps"
+        if idTargAperatures:
+            # We take the median dataFrame and identify/trace aperatures on it
+            # We then pass this as a reference to apall on all data frames
+            _targap  = _proc+prefn+"_targap"
+            _targaps = _proc+prefn+"_targaps"
 
-        ir.imdelete(_targap)
-        ir.imdelete(_targaps)
-        ir.imcombine("@"+proctarg, output=_targap, combine="average",reject="avsigclip", sigmas=_targaps, scale="none", weight="median", bpmasks="")
+            ir.imdelete(_targap)
+            ir.imdelete(_targaps)
+            ir.imcombine("@"+fullproctarg, output=_targap, combine="average",reject="avsigclip", sigmas=_targaps, scale="none", weight="median", bpmasks="")
 
-        ir.apfind(_targap, interactive=interactive, nfind=n_ap, minsep=10)
-        ir.aptrace(_targap, interactive=interactive, recenter='no', resize='no', function='chebyshev', order=3, sample=horizsamp, naverage=3,niterate=3)
-        # ap_ref = db_pre+prefn+"_targap"
+            ir.apfind(_targap, interactive=interactive, nfind=n_ap, minsep=10)
+            ir.aptrace(_targap, interactive=interactive, recenter='no', resize='no', function='chebyshev', order=3, sample=horizsamp, naverage=3,niterate=3)
+            # ap_ref = db_pre+prefn+"_targap"
 
-        if verbose:
-            print "\n\n"
-            print "Identified Aperatures, commencing data extraction"
-            print "This could take a while depending on how many frames are input"
-  
+            if verbose:
+                print "\n\n"
+                print "Identified Aperatures"
+
         ir.imdelete('@'+spectarg)
         list_proctarg = ny.loadtxt(proctarg,str)
         list_spectarg = ny.loadtxt(spectarg,str)

@@ -2325,8 +2325,8 @@ def initobs(date, **kw):
         starmodelfilename = ""
         planetmodelfilename = ""
 
-
     datalist = filelist(prefix, postfix, framelist)
+
 
     darkfilelist     = filelist(_raw+prefix, '.fits', darklist, numplaces=4)
     darkflatlist     = filelist(_raw+prefix, '.fits', darkflatlist, numplaces=4)
@@ -2335,6 +2335,9 @@ def initobs(date, **kw):
     proccalfilelist  = filelist( _proc+prefix, 'fn', callist, numplaces=4)
     rawtargfilelist  = filelist( _raw+prefix, '.fits', framelist, numplaces=4)
     proctargfilelist = filelist( _proc+prefix, 'fn', framelist, numplaces=4)
+
+    fullproctargfilelist = filelist( _proc+prefix, 'fn', fullframelist, numplaces=4)
+
     speccalfilelist  = filelist(prefix, 's', callist, numplaces=4)
     spectargfilelist = filelist(prefix, 's', framelist, numplaces=4)
 
@@ -2358,33 +2361,34 @@ def initobs(date, **kw):
     #        (rawtargfilelist, proctargfilelist), (speccalfilelist, spectargfilelist), 
     #        n_aperture, filter, prefix, calnod, meancal, disp, aplist_cal)
     ret = {}
-    ret['planet']              = planet
-    ret['_proc']               = _proc
-    ret['datalist']            = datalist
-    ret['wavefilename']        = wavefilename
-    ret['starmodelfilename']   = starmodelfilename
-    ret['planetmodelfilename'] = planetmodelfilename
-    ret['aplist']              = aplist
-    ret['ap_suffix']           = ap_suffix
-    ret['telluric_fn']         = telluric_fn
-    ret['_raw']                = _raw
-    ret['darkfilelist']        = darkfilelist
-    ret['darkflatlist']        = darkflatlist
-    ret['darkcallist']         = darkcallist
-    ret['flatfilelist']        = flatfilelist
-    ret['rawcalfilelist']      = rawcalfilelist
-    ret['proccalfilelist']     = proccalfilelist
-    ret['rawtargfilelist']     = rawtargfilelist
-    ret['proctargfilelist']    = proctargfilelist
-    ret['speccalfilelist']     = speccalfilelist
-    ret['spectargfilelist']    = spectargfilelist
-    ret['n_aperture']          = n_aperture
-    ret['filter']              = filter
-    ret['prefix']              = prefix
-    ret['calnod']              = calnod
-    ret['meancal']             = meancal
-    ret['disp']                = disp
-    ret['aplist_cal']          = aplist_cal
+    ret['planet']               = planet
+    ret['_proc']                = _proc
+    ret['datalist']             = datalist
+    ret['wavefilename']         = wavefilename
+    ret['starmodelfilename']    = starmodelfilename
+    ret['planetmodelfilename']  = planetmodelfilename
+    ret['aplist']               = aplist
+    ret['ap_suffix']            = ap_suffix
+    ret['telluric_fn']          = telluric_fn
+    ret['_raw']                 = _raw
+    ret['darkfilelist']         = darkfilelist
+    ret['darkflatlist']         = darkflatlist
+    ret['darkcallist']          = darkcallist
+    ret['flatfilelist']         = flatfilelist
+    ret['rawcalfilelist']       = rawcalfilelist
+    ret['proccalfilelist']      = proccalfilelist
+    ret['rawtargfilelist']      = rawtargfilelist
+    ret['proctargfilelist']     = proctargfilelist
+    ret['fullproctargfilelist'] = fullproctargfilelist
+    ret['speccalfilelist']      = speccalfilelist
+    ret['spectargfilelist']     = spectargfilelist
+    ret['n_aperture']           = n_aperture
+    ret['filter']               = filter
+    ret['prefix']               = prefix
+    ret['calnod']               = calnod
+    ret['meancal']              = meancal
+    ret['disp']                 = disp
+    ret['aplist_cal']           = aplist_cal
     return ret
 
 
