@@ -107,7 +107,10 @@ preProcTarg = False
 processTarg = True
 
 # WhatToSave
+# For PreprocessTarg
 saveBadMask        = False
+
+# For ProcessTarg
 saveCorrectedImg   = False #(Output of Preprocess)
 saveUnInterpolated = False
 
@@ -630,7 +633,7 @@ if preProcData:
             csigma=csigma, cthreshold=cthreshold,
             cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
             date=date, time=time, dofix=dofix, corquad=_corquad,
-            num_processors=num_processors, saveBadMask=saveBadMask, tryIRccdproc=False)
+            num_processors=num_processors, saveBadMask=saveBadMask, tryIRccdproc=False, badPixMethod='linear')
 
     if preProcTarg:
         ns.write_exptime(rawtarg, itime=itime)
@@ -642,7 +645,7 @@ if preProcData:
             csigma=csigma, cthreshold=cthreshold,
             cleancr=cleancr, rthreshold=rthreshold, rratio=rratio,
             date=date, time=time, dofix=dofix, corquad=_corquad,
-            num_processors=num_processors, saveBadMask=saveBadMask,tryIRccdproc=False)
+            num_processors=num_processors, saveBadMask=saveBadMask,tryIRccdproc=False, badPixMethod='linear')
 
     if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
 

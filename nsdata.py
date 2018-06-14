@@ -1590,7 +1590,7 @@ def preprocess(*args, **kw):
                         cleancr=False, rthreshold=300, rratio=5, \
                     date='date-obs', time='UTC', dofix=True, corquad="", airmass='AIRMASS', num_processors=1,
                     pytifts_outverify = 'warn', saveBadMask=True,
-                    tryIRccdproc=True, badPixMethod='Median')
+                    tryIRccdproc=True, badPixMethod='Median', flatInterpolationNumber=3)
 
     for key in defaults:
         if (not kw.has_key(key)):
@@ -1608,6 +1608,7 @@ def preprocess(*args, **kw):
     saveBadMask     = kw['saveBadMask']
     tryIRccdproc    = kw['tryIRccdproc']
     badPixMethod      = kw['badPixMethod']
+    flatInterpolationNumber = kw['flatInterpolationNumber']
 
     if verbose:
         print '-------------------------------'
@@ -1738,7 +1739,7 @@ def preprocess(*args, **kw):
         if doflat and type(kw['flat']) == dict:
             airmass = hdulist[0].header[kw['airmass']]
             altitude = convertAirmassToAltitude(airmass)
-            gen_hdr, gen_data = interpolateFlatFrameFromAngle(kw['flat'],altitude)
+            gen_hdr, gen_data = interpolateFlatFrameFromAngle(kw['flat'],altitude,flatInterpolationNumber)
 
             fileID = output.split('/')[-1].split('_')[1][:4]
             gen_flat = os.path.split(output)[0]+'/generated_flat_' + fileID + '.fits'
@@ -1824,7 +1825,7 @@ def preprocess(*args, **kw):
 def preprocessEach(i,inLines,outLines,kw):
     preprocess(inLines[i].strip(), outLines[i].strip(), **kw)
 
-def interpolateFlatFrameFromAngle(allflats, altitude):
+def interpolateFlatFrameFromAngle(allflats, altitude, numToInterpolate=3):
     """ Generates flat field frame for a given altitude from dict of
         {altitude: flat_file}
 
@@ -1835,6 +1836,8 @@ def interpolateFlatFrameFromAngle(allflats, altitude):
                      --- limited to integer angles
 
             altitude --- (float) altitude angle to generate flat field for
+
+            numToInterpolate ---- How many nearby flatframes to use for interpolation
 
         :OUTPUTS:
             outhdr  --- (dict) header for generated flat frame
@@ -1850,57 +1853,30 @@ def interpolateFlatFrameFromAngle(allflats, altitude):
     angles = [int(k) for k in allflats.keys()]
     angles.sort()
 
-    upperIndex = bisect(angles,altitude)
-    flat_files = []
-    weights    = []
+    dists = [np.abs(angle-altitude) for angle in angles]
+    angles_to_use = np.argsort(dists)[:numToInterpolate]
 
+    flat_data    = []
+    flat_weights = []
 
-    #Which flats to use
-    if(upperIndex == len(angles)):
-        # Higher than highest angle - return max
-        flat_files = [allflats[str(angles[-1])]]
-        weights    = [1]
-    elif (upperIndex == 0):
-        # Lower than lowest angle - return min
-        flat_files = [allflats[str(angles[0])]]
-        weights    = [1]
-    else:
-        upperAngle = angles[upperIndex]
-        lowerAngle = angles[upperIndex-1]
+    for each in angles_to_use:
+        #verify file is real
+        flat_filename = allflats[str(angles[each])]
+        if not os.path.isfile(flat_filename):
+            flat_filename = flat_filename+'.fits'
+            if not os.path.isfile(flat_filename):
+                raise IOError("File "+ flat_filename + " not found")
 
-        score = (upperAngle - altitude)/(upperAngle - lowerAngle)
+        fd = pyfits.getdata(flat_filename)
+        flat_data.append(fd)
+        flat_weights.append(1/dists[each])
 
-        flat_files = [allflats[str(upperAngle)],allflats[str(lowerAngle)]]
-        weights    = [score, 1-score]
+    # Average, weight by inverse distance in angle space
+    outdat = np.average(flat_data,0,flat_weights)
 
-
-    #verifying flats are real
-    for i in range(len(flat_files)):
-        if not os.path.isfile(flat_files[i]):
-            flat_files[i] = flat_files[i]+'.fits'
-            if not os.path.isfile(flat_files[i]):
-                raise IOError("File "+ flat_files[i] + " not found")
-
-    flathdrs = [pyfits.getheader(file) for file in flat_files]
-    flatdats = [pyfits.getdata(file) for file in flat_files]
-
-    #combine the data:
-    outdat = np.median(flatdats,0)
-    outhdr = flathdrs[0]
-    outhdr['OBJECT0'] = flathdrs[0]['OBJECT']
-    outhdr['WEIGHT0'] = weights[0]
-    if len(flathdrs)>1:
-        for ind,hdr in enumerate(flathdrs[1:]):
-            outhdr['OBJECT'+str(ind+1)] = hdr['OBJECT']
-            outhdr['WEIGHT'+str(ind+1)] = weights[ind+1]
-            for k,v in hdr.items():
-                if not k in outhdr:
-                    continue
-                else:
-                    if v != outhdr[k]:
-                        outhdr.pop(k,None)
+    outhdr = pyfits.getheader(flat_filename)
     outhdr['OBJECT']   = 'Interpolated Flat Frame'
-    outhdr['ALTITUDE'] = altitude
+    outhdr['ALTITUDE'] = str(altitude)
 
     return outhdr, outdat
 
