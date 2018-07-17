@@ -1,165 +1,165 @@
 import numpy as np
+import pickle
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib
 from astropy.io import fits
-from scipy import ndimage
-from numpy.polynomial.polynomial import polyval
-
-
-dataRange = list(range(105,115+1)) + list(range(525,535+1)) +  list(range(885,895+1)) +  list(range(1230,1240+1)) +  list(range(1580,1590)) + list(range(2125,2130)) + list(range(2131,2135+1)) +  list(range(2845,2855+1)) +  list(range(3200,3210+1)) +  list(range(3610,3620+1)) + list(range(3814,3824+1))
-
-file_dir = '/Users/nicholasmehrle/documents/science/spectroscopy/2016oct16/proc/'
-file_pre = 'spec_'
-file_pos = 'sint.fits'
-
-apNum = 19
-apRange = range(apNum-1,-1,-1)
-orderLabels = list(np.arange(1,10,1)) + list(np.arange(13,23,1))
+from scipy import ndimage, interpolate
 
 # Pipeline for cleaning high-res spectroscopic data 
-
-
 '''
    Pipeline Functions
 '''
-# Reads data in from file
-def collectData():
-  allData = []
-  allWave = []
-  allSig  = []
 
-  apRange = range(apNum)
-  for i in apRange:
-      allData.append([])
-      allSig.append([])
-      
-  for i,dataFile in enumerate(dataRange):
-      filename = file_dir+file_pre+str(dataFile).zfill(4)+file_pos
-      data = fits.getdata(filename)
-      for ap in apRange:
-          if i==0:
-              allWave.append(data[4][ap]/10000)
-          spec = data[0][ap]
-          spec[spec<=0] = 0
-          allData[ap].append(spec)
+# Raw Data 
+def collectData(dataFile):
+  with open(dataFile,'rb') as f:
+    data = pickle.load(f)
 
-          sigmas = data[3][ap]
-          allSig[ap].append(sigmas)
+  return data
 
-  return np.array(allData), np.array(allWave), np.array(allSig)
+def plotOrder(flux, wave, order=None, orderLabels=None):
+  xlocs = [0, int(np.shape(flux)[1]/2), np.shape(flux)[1]-1]
+  xlabs = wave[xlocs]
+  xlabs = ['%.3f' % (np.round(x,3)) for x in xlabs]
 
-# Step 1: Alignment w/ highest SNR
+  plt.figure()
+  plt.imshow(flux)
+  plt.ylabel('Frame')
+  plt.xlabel('Wavelength')
+  if order == None:
+    plt.title('')
+  else:
+    if orderLabels == None:
+      plt.title('Order: '+str(order))
+    else:
+      plt.title('Order: '+str(orderLabels[order]))
+  plt.clim(np.percentile(flux,1),np.percentile(flux,99))
+  plt.xticks(xlocs,xlabs)
+
+  plt.show()
+
+
+
+# Step 1: Discard Bad Data:
 # #########################################
-def getHighestSNR(allData, allSig):
-  point_snrs = np.nan_to_num(allData/allSig)
-  spec_snrs  = np.median(point_snrs,2)
-  time_snrs  = np.median(spec_snrs,0)
+def getBounds(flux, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0.1):
+  med_data = np.median(flux,0)
+  filt = ndimage.gaussian_filter(med_data, sigma)
+  grad = np.gradient(filt)
 
-  return np.argmax(time_snrs)
+  # find maxima on right - before ramp down
+  grad_max = ndimage.maximum_filter(grad,neighborhood_size)
+  maxima = (grad == grad_max)
+  maxima[np.isclose(grad_max,0,atol=zeroTol)] = 0
+  maxima[:edge_discard]  = 0
+  maxima[-edge_discard:] = 0
+  last_maxima = np.where(maxima)[0][-1]
+
+  # find minima on left - after ramp up
+  grad_min = ndimage.minimum_filter(grad,neighborhood_size)
+  minima = (grad == grad_min)
+  minima[np.isclose(grad_min,0,atol=zeroTol)] = 0
+  minima[-edge_discard:] = 0
+  minima[:edge_discard]  = 0
+  first_minima = np.where(minima)[0][0]
+
+  return [first_minima,last_maxima]
+
+def trimData(flux, wave, error, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0.1):
+  bounds = getBounds(flux, sigma=sigma, neighborhood_size=neighborhood_size, edge_discard=edge_discard, zeroTol=zeroTol)
+
+  bound_flux = flux[:,bounds[0]:bounds[1]]
+  bound_wave = wave[bounds[0]:bounds[1]]
+  bound_error = error[:,bounds[0]:bounds[1]]
+
+  return bound_flux, bound_wave, bound_error
+
+
+# Step 2: Alignment w/ highest SNR
+# #########################################
+def getHighestSNR(flux, error):
+  snrs = np.median(flux/error,1)
+  return np.argmax(snrs)
 
 
 # Gives alignment fixes from crosscorrelations with highSNR spectrum
-def findShifts(allData, order, highSNR, neighborhood_size=20, peak_width_frac = 1/2, peak_half_width=None):
-  n = np.shape(allData)[2]
+# Shift value is center(highSNR) - center(this_spec)
+#  I.e. negative shift value indicates this spectra is moved right, needs to be moved left
+def findPixelShifts(flux, error, interpolation_half_width = 2, 
+                    peak_half_width = 1.2, 
+                    upSampleFactor = 2000,
+                    verbose = False,
+                    xcorMode = 'full'
+):
+  highSNR = getHighestSNR(flux, error)
 
-  # Select this order, de mean
-  data = allData[order]
-  data = [spec-np.mean(spec) for spec in data]
+  ref_spec = flux[highSNR] - np.mean(flux[highSNR])
+  auto_cor = np.correlate(ref_spec, ref_spec, xcorMode)
+  zero_point = np.argmax(auto_cor)
 
-  ref_spec = data[highSNR]
-  shifts = []
+  centers = []
 
-  for this_data in data:
-    xcor = np.correlate(this_data,ref_spec,'full')
+  for i,spec in enumerate(flux):
+    if verbose:
+      if i % 500 == 0:
+        print('On Spectra '+str(i)+'/'+str(len(flux)))
 
-    rough_center = np.argmax(xcor)
-    xcor_min     = ndimage.minimum_filter(xcor,neighborhood_size)
+    xcor = np.correlate(spec-np.mean(spec), ref_spec, xcorMode)
+    mid_point = np.argmax(xcor)
 
+    #upsample the Cross Correlation Peak
+    xcor_lb = mid_point - interpolation_half_width
+    xcor_rb = mid_point + interpolation_half_width + 1
 
-    if peak_half_width==None:
-      m1 = np.where(xcor[:rough_center] == xcor_min[:rough_center])[0][-1]
-      m2 = np.where(xcor[rough_center:] == xcor_min[rough_center:])[0][0] + rough_center
+    peak_x = range(xcor_lb,xcor_rb)
+    peak   = xcor[xcor_lb:xcor_rb]
 
-      baseline = (xcor[m1] + xcor[m2])/ 2
+    upSamp, upSampPeak = upSampleData(peak_x, peak, upSampleFactor)
 
-      peak_min = baseline + (np.max(xcor) - baseline) * (peak_width_frac)
+    upSampPeakHW = int(peak_half_width / (len(peak_x) - 1) * upSampleFactor)
 
-      left_bound = rough_center
-      for i in np.arange(rough_center,m1,-1):
-        if (xcor[i] <= peak_min):
-          left_bound = i+1
-          break
+    center = findCenterOfPeak(upSamp, upSampPeak, upSampPeakHW)
 
-      right_bound = rough_center
-      for i in np.arange(rough_center,m2,1):
-        if (xcor[i] <= peak_min):
-          right_bound = i
-          break
-    else:
-      left_bound  = rough_center - peak_half_width
-      right_bound = rough_center + peak_half_width + 1
+    centers.append(center)
 
-    peak = xcor[left_bound:right_bound]
-    peak_x = np.arange(left_bound,right_bound)
+  return  zero_point - np.array(centers)
 
-    quad_p = np.polyfit(peak_x, peak, 2)
+def upSampleData(x, y, upSampleFactor = 10):
+  upSampX = np.linspace(x[0], x[-1], len(x)*upSampleFactor)
+  interpolation = interpolate.splrep(x, y)
+  upSampY = interpolate.splev(upSampX, interpolation)
 
-    this_shift = (-quad_p[1] / (2*quad_p[0])) - (n-1)
-    shifts.append(this_shift)
+  return upSampX, upSampY
 
-  return np.array(shifts)
+def findCenterOfPeak(x,y, peak_half_width = 10):
+  mid_point = np.argmax(y)
+
+  left_bound  = mid_point - peak_half_width 
+  right_bound = mid_point + peak_half_width + 1
+
+  quad_fit = np.polyfit(x[left_bound:right_bound], y[left_bound:right_bound] ,2)
+
+  center = (-quad_fit[1] / (2*quad_fit[0]))
+
+  return center
+
+def getSpacing(arr):
+  return (arr[-1]-arr[0])/(len(arr)-1)
+
+# Assumes shift is in pixel values
+# Positive shift moves data to the right
+def shiftData(x, y, shift):
+  ip = interpolate.splrep(x, y)
+
+  dx = getSpacing(x)
+  shift_x = x - (dx * shift)
+
+  interpolated = interpolate.splev(shift_x, ip)
+
+  return interpolated
+
 # ######################################### 
-
-# Step 2: Extracting Bad Regions
-# ########################################
-# Finds Bounds of data ->
-# Bounds off sections of increase/decrease on either end
-def getBounds(allData, sigma = 3, neighborhood_size=20, edge_discard = 1,zeroTol = 1e-8):
-  # higher sigma = tighter bounds
-  bounds = []
-
-  for i in range(len(allData)):
-    data = np.median(allData[i],0)
-
-    filt = ndimage.gaussian_filter(data, sigma)
-    grad = np.gradient(filt)
-
-    # find maxima on left - ramp up point
-    grad_max = ndimage.maximum_filter(grad,neighborhood_size)
-    maxima = (grad == grad_max)
-    maxima[np.isclose(grad_max,0,atol=zeroTol)] = 0
-    maxima[:edge_discard] = 0
-    first_maxima = np.where(maxima)[0][0]
-
-    # find minima on right - ramp down point
-    grad_min = ndimage.minimum_filter(grad,neighborhood_size)
-    minima = (grad == grad_min)
-    minima[np.isclose(grad_min,0,atol=zeroTol)] = 0
-    minima[-edge_discard:] = 0
-    last_minima = np.where(minima)[0][-1]
-    bounds.append([first_maxima,last_minima])
-  return bounds
-
-# Trims data to fit bounds
-def trimOrders(allData, allWave, sigma = 3, neighborhood_size=20, edge_discard = 1,zeroTol = 1e-8):
-  bounds = getBounds(allData, sigma=sigma, neighborhood_size=neighborhood_size, edge_discard=edge_discard, zeroTol=zeroTol)
-  n_orders = len(allData)
-
-  boundData = []
-  boundWave = []
-  for i in range(n_orders):
-      this_order   = np.array(allData[i])
-      wave_order   = np.array(allWave[i])
-      these_bounds = bounds[i]
-      data = this_order[:,these_bounds[0]:these_bounds[1]]
-      wave = wave_order[these_bounds[0]:these_bounds[1]]
-      
-      boundData.append(data)
-      boundWave.append(wave)
-
-  return boundData, boundWave
-
 
 # Identifies regions of high telluric absorbtion by their local SNR
 # TODO add custom windowing
@@ -260,11 +260,6 @@ def sysrem(data, error, ncycles=1, aVec=None, maxIterations=200, maxErr=0.001, v
   return ret
 
 
-# def sysrem(data, error, ncycles=1, aVec=None, maxIterations=100, maxErr=0.001):
-  # print np.shape(data)
-
-
-
 
 # simple divide by columnwise median
 def crudeTelluricFixing(allData):
@@ -329,15 +324,13 @@ def showOrders(allData, allWave, saveName=None, dataShape = None, orderLabels=No
   plt.show()
 
 # Plots 1d bounds found using getBounds
-def plotBounds(allData, sigma=20, whichSpec = None ):
-  bounds = getBounds(allData,sigma=sigma)
+def plotBounds(allData, sigma = 10, neighborhood_size=20, edge_discard = 10,zeroTol = 0.1):
+  bounds = getBounds(allData, sigma=sigma, neighborhood_size=neighborhood_size, edge_discard=edge_discard, zeroTol=zeroTol)
   plt.figure(figsize=(8,(len(allData)*4)))
   for i in range(len(allData)):
       plt.subplot(len(allData),1,i+1)
-      if whichSpec==None:
-        plt.plot(normalize(np.median(allData[i],0)))
-      else:
-        plt.plot(normalize(allData[i][whichSpec]))
+      plt.plot(normalize(np.median(allData[i],0)))
+
       plt.plot([bounds[i][0],bounds[i][0]],[0,1],'r')
       plt.plot([bounds[i][1],bounds[i][1]],[0,1],'r')
       plt.title('Order '+ str(orderLabels[i]))
@@ -347,7 +340,6 @@ def plotBounds(allData, sigma=20, whichSpec = None ):
 # Overlays image plots of data, masks
 # Masks should be taken from identify bad regions
 # (Masks are boolean arrays same shape as the data, true's are areas that are kept)
-# TODO Cmap
 def plotMasks(allData, allWave, masks, saveName=None, dataShape = None, orderLabels=None, aspect=None, figsize = (8,8), cRange=None, cmap='viridis', waveUnit = 'microns', alpha=0.3, mask_color = 'r'):
   n_orders = len(allData)
   rows     = len(allData[0])

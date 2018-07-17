@@ -67,7 +67,7 @@ def addToDb(dbname):
 
   # Full Range
   data['fullframelist'] = range(73,3824+1)
-  data['framelist']    = range(73,80+1)
+  data['framelist']    = range(73,3824+1)
 
 
   data['flatlist']     = {

@@ -9,6 +9,7 @@ from pathlib import Path
 verbose = True
 
 
+
 if verbose:
   print("Begining Pickling Process")
   print("Reading Data...")
@@ -26,9 +27,9 @@ subset_ranges = np.array_split(list_spectarg, int(len(list_spectarg)/maxChunkSiz
 
 fluxes = []
 errors = []
-hdr_keys= []
-# hdr_keys = ['JD','refspec1']
-hdr_vals = [[] for _ in range(len(hdr_keys))]
+
+hdr_vals = {}
+
 
 for i, subset_range in enumerate(subset_ranges):
   if verbose:
@@ -49,16 +50,21 @@ for i, subset_range in enumerate(subset_ranges):
         waves = data[4]/10000
 
       hdr = hdu.header
-      for i,key in enumerate(hdr_keys):
-        hdr_vals[i].append(hdr[key])
+      for key in hdr.keys():
+        if key == '':
+          continue
 
+        if key not in hdr_vals:
+          hdr_vals[key] = [hdr[key]]
+        else:
+          hdr_vals[key].append(hdr[key])
 
     del data
     del hdr
     del hdu.data
     del hdu
     del hdul
-
+  
   fluxes.append(np.copy(fluxSubset))
   errors.append(np.copy(errorSubset))
 
@@ -68,8 +74,6 @@ for i, subset_range in enumerate(subset_ranges):
 fluxes = np.concatenate(fluxes).transpose(1,0,2)
 errors = np.concatenate(errors).transpose(1,0,2)
 
-hdr_dict = dict(zip(hdr_keys,hdr_vals))
-
 if verbose:
   print('Writing Data')
 
@@ -78,14 +82,21 @@ for order in range(len(fluxes)):
     print('Writing order ' + str(order+1) +'/'+ str(len(fluxes)))
 
   toPickle = {
-    'fluxes': fluxes[order],
-    'errors': errors[order],
-    'waves' : waves[order]
+    'fluxes': np.array(fluxes[order]),
+    'errors': np.array(errors[order]),
+    'waves' : np.array(waves[order])
   } 
-  toPickle.update(hdr_dict)
 
-  saveName = _proc+'_order_'+str(order)+'.pickle'
+  saveName = _proc+'order_'+str(order)+'.pickle'
 
   with open(saveName,'wb') as pf:
     pickle.dump(toPickle,pf, protocol=pickle.HIGHEST_PROTOCOL)
 
+if verbose:
+  print('Writing Header')
+hdr_saveName = _proc+'allHeaders.pickle'
+with open(hdr_saveName,'wb') as pf:
+  pickle.dump(hdr_vals, pf, protocol=pickle.HIGHEST_PROTOCOL)
+
+if verbose:
+  print('All Done!')

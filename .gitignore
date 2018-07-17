@@ -8,5 +8,5 @@ logfile
 *.todo
 *_summary.txt
 rundbm.py
-analysis/
 .ipynb_checkpoints
+analysis/
