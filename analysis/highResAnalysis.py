@@ -692,18 +692,6 @@ def findCenterOfPeak(x,y, peak_half_width = 10):
 
   return center
 
-# Assumes shift is in pixel values
-# Positive shift moves data to the right
-def shiftData(x, y, shift):
-  ip = interpolate.splrep(x, y)
-
-  dx = getSpacing(x)
-  shift_x = x - (dx * shift)
-
-  interpolated = interpolate.splev(shift_x, ip)
-
-  return interpolated
-
 def getSpacing(arr):
   return (arr[-1]-arr[0])/(len(arr)-1)
 
