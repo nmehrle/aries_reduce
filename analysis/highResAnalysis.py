@@ -231,13 +231,10 @@ def getHighestSNR(flux, error):
 # Gives alignment fixes from crosscorrelations with highSNR spectrum
 # Shift value is center(highSNR) - center(this_spec)
 #  I.e. negative shift value indicates this spectra is moved right, needs to be moved left
-def findPixelShifts(flux, error, interpolation_half_width = 2, 
-                      peak_half_width = 0.9, 
-                      upSampleFactor = 5,
+def findPixelShifts(flux, error,peak_half_width = 3, 
+                      upSampleFactor = 100,
                       verbose = False,
                       xcorMode = 'same',
-                      doQuadFit = True,
-                      doZoom = False
 ):
   highSNR = getHighestSNR(flux, error)
 
@@ -257,24 +254,15 @@ def findPixelShifts(flux, error, interpolation_half_width = 2,
     mid_point = np.argmax(xcor)
 
     #upsample the Cross Correlation Peak
-    xcor_lb = mid_point - interpolation_half_width
-    xcor_rb = mid_point + interpolation_half_width + 1
+    xcor_lb = mid_point - peak_half_width
+    xcor_rb = mid_point + peak_half_width + 1
 
     peak_x = range(xcor_lb,xcor_rb)
     peak   = xcor[xcor_lb:xcor_rb]
 
-    if doZoom:
-      upSamp= np.linspace(peak_x[0],peak_x[-1],len(peak_x)*upSampleFactor)
-      upSampPeak = ndimage.zoom(peak, upSampleFactor)
-    else:
-      upSamp, upSampPeak = upSampleData(peak_x, peak, upSampleFactor)
+    upSamp, upSampPeak = upSampleData(peak_x, peak, upSampleFactor)
 
-    upSampPeakHW = int(peak_half_width * upSampleFactor)
-
-    if doQuadFit:
-      center = findCenterOfPeak(upSamp, upSampPeak, upSampPeakHW)
-    else:
-      center = upSamp[np.argmax(upSampPeak)]
+    center = upSamp[np.argmax(upSampPeak)]
 
     centers.append(center)
 
