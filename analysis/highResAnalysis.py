@@ -227,7 +227,6 @@ def getHighestSNR(flux, error):
   snrs = np.median(flux/error,1)
   return np.argmax(snrs)
 
-
 # Gives alignment fixes from crosscorrelations with highSNR spectrum
 # Shift value is center(highSNR) - center(this_spec)
 #  I.e. negative shift value indicates this spectra is moved right, needs to be moved left
@@ -260,7 +259,7 @@ def findPixelShifts(flux, error,peak_half_width = 3,
     peak_x = range(xcor_lb,xcor_rb)
     peak   = xcor[xcor_lb:xcor_rb]
 
-    upSamp, upSampPeak = upSampleData(peak_x, peak, upSampleFactor)
+    upSamp, upSampPeak = upSampleData(peak_x, peak, upSampleFactor=upSampleFactor)
 
     center = upSamp[np.argmax(upSampPeak)]
 
@@ -280,8 +279,22 @@ def applyShifts(flux, error, shifts,
 
 
   for i in seq:
-    aligned_flux[i] = ndimage.shift(flux[i],shifts[i],mode='nearest')
-    aligned_error[i] = ndimage.shift(error[i],shifts[i],mode='nearest')
+    aligned_flux[i] = fourierShiftData(flux[i],shifts[i])
+    aligned_error[i] = fourierShiftData(error[i],shifts[i])
+  return aligned_flux, aligned_error
+
+def fourierShifts(flux,error,shifts, verbose=False):
+  seq = range(len(flux))
+  if verbose:
+    seq = tqdm(seq, desc='Aligning Spectra')
+
+  aligned_flux  = np.zeros(np.shape(flux))
+  aligned_error = np.zeros(np.shape(error))
+  
+  for i in seq:
+    aligned_flux[i]  = fs(flux[i],shifts[i])
+    aligned_error[i]  = fs(error[i],shifts[i])
+
   return aligned_flux, aligned_error
 
 def alignData(flux, error,
@@ -673,12 +686,33 @@ def getTemplate(templateFile, wave):
 '''
 # Math
 # ######################################################
-def upSampleData(x, y, upSampleFactor = 10):
+def upSampleData(x, y, error=None, upSampleFactor = 10, ext=3):
   upSampX = np.linspace(x[0], x[-1], len(x)*upSampleFactor)
-  interpolation = interpolate.splrep(x, y)
-  upSampY = interpolate.splev(upSampX, interpolation)
+
+  weights = None
+  if error is not None:
+    weights = 1/error
+
+  interpolation = interpolate.splrep(x, y, weights)
+  upSampY = interpolate.splev(upSampX, interpolation, ext = ext)
 
   return upSampX, upSampY
+
+def shiftData(y, shift, error=None, ext=3):
+  x = np.arange(len(y))
+
+  weights = None
+  if error is not None:
+    weights = 1/error
+
+  ip = interpolate.splrep(x, y, weights)
+  interpolated = interpolate.splev(x - shift, ip, ext=ext)
+
+  return interpolated
+
+def fourierShiftData(y, shift):
+  fft_shift = ndimage.fourier_shift(np.fft.rfft(y), shift)
+  return np.fft.irfft(fft_shift)
 
 def findCenterOfPeak(x,y, peak_half_width = 10):
   mid_point = np.argmax(y)
