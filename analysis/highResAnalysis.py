@@ -236,6 +236,7 @@ def findPixelShifts(flux, error,peak_half_width = 3,
                       xcorMode = 'same',
 ):
   highSNR = getHighestSNR(flux, error)
+  print(highSNR)
 
   ref_spec = flux[highSNR] - np.mean(flux[highSNR])
   auto_cor = signal.correlate(ref_spec, ref_spec, xcorMode)
@@ -283,20 +284,6 @@ def applyShifts(flux, error, shifts,
     aligned_error[i] = fourierShiftData(error[i],shifts[i])
   return aligned_flux, aligned_error
 
-def fourierShifts(flux,error,shifts, verbose=False):
-  seq = range(len(flux))
-  if verbose:
-    seq = tqdm(seq, desc='Aligning Spectra')
-
-  aligned_flux  = np.zeros(np.shape(flux))
-  aligned_error = np.zeros(np.shape(error))
-  
-  for i in seq:
-    aligned_flux[i]  = fs(flux[i],shifts[i])
-    aligned_error[i]  = fs(error[i],shifts[i])
-
-  return aligned_flux, aligned_error
-
 def alignData(flux, error,
                 interpolation_half_width = 2, 
                 peak_half_width = 1.2, 
@@ -312,7 +299,149 @@ def alignData(flux, error,
             xcorMode=xcorMode)
 
   aligned_flux, aligned_error = applyShifts(flux,error,shifts,verbose)
-  return aligned_flux, aligned_error
+  return aligned_flux, aligned_error 
+
+def correlate(target, reference, fourier_domain = False):
+  if not fourier_domain:
+    n = len(reference)
+    target = target - np.mean(target,1, keepdims=True)
+    power = np.ceil(np.log2(n))
+    target = np.fft.rfft(target, 2**power, axis=1)
+
+    reference = reference - np.mean(reference)
+    reference = np.fft.rfft(reference, 2**power)
+
+  fft_corr = np.conj(reference) * target
+  
+  if not fourier_domain:
+    return ifftCorrelation(fft_corr, n)
+
+  return fft_corr
+  
+def ifftCorrelation(fft_corr, n=None):
+  corr = np.fft.irfft(fft_corr)
+  m = np.shape(corr)[1]
+  mid_point = int(m/2)
+  second_half = corr[:,:mid_point]
+  first_half  = corr[:,mid_point:]
+
+  corr = np.concatenate((first_half,second_half), axis=1)
+  if n == None:
+    return corr
+
+  diff = m - n
+  if diff <= 0:
+    return corr
+
+  corr = corr[:,int(np.ceil(diff/2)):-int(np.floor(diff/2))]
+  return corr
+
+def rfft(a, axis=-1):
+  n = np.shape(a)[axis]
+  power = np.ceil(np.log2(n))
+
+  return np.fft.rfft(a, 2**power, axis)
+
+def calcCorrelationOffset(corr, auto_corr,
+              peak_half_width = 3,
+              upSampleFactor  = 1000, 
+              fourier_domain = False,
+              verbose = False
+):
+  if fourier_domain:
+    corr = ifftCorrelation(corr, len(auto_corr))
+
+  zero_point = np.argmax(auto_corr)
+
+  seq = range(len(corr))
+  if verbose:
+    seq = tqdm(seq, desc="Finding Shifts")
+
+  centers = []
+  for i in seq:
+    xcor = corr[i]
+    mid_point = np.argmax(xcor)
+    #upsample the Cross Correlation Peak
+    xcor_lb = mid_point - peak_half_width
+    xcor_rb = mid_point + peak_half_width + 1
+
+    peak_x = range(xcor_lb,xcor_rb)
+    peak   = xcor[xcor_lb:xcor_rb]
+    # return xcor, mid_point
+
+
+    upSamp, upSampPeak = upSampleData(peak_x, peak, upSampleFactor=upSampleFactor)
+
+    center = upSamp[np.argmax(upSampPeak)]
+
+    centers.append(center)
+
+  return  zero_point - np.array(centers)
+
+def fourierShiftData(y, shift,n=None,fourier_domain=False):
+  if not fourier_domain:
+    n = len(y)
+    y = np.fft.rfft(y)
+
+  if n == None:
+    fft_shift = ndimage.fourier_shift(y, shift)
+  else:
+    fft_shift = ndimage.fourier_shift(y,shift, n)
+
+  if not fourier_domain:
+    return np.fft.irfft(fft_shift)
+
+  return fft_shift
+
+def findShifts(flux,ref,upSampleFactor=1000):
+  m,n = np.shape(flux)
+  row_means = np.mean(flux, 1, keepdims = True)
+  flux = flux - row_means
+  ref = ref-np.mean(ref)
+  ref_autoCorr = signal.correlate(ref, ref, 'same')
+
+  power = np.ceil(np.log2(n))
+  fft_ref = rfft(ref)
+  fft_flux = rfft(flux)
+
+  fft_corr = correlate(fft_flux, fft_ref,True)
+  shifts = calcCorrelationOffset(fft_corr, ref_autoCorr, fourier_domain=True,verbose=True,upSampleFactor=upSampleFactor)
+  return shifts
+
+def ital(flux, ref, iterations,useN = True):
+  m,n = np.shape(flux)
+
+  # highSNR = getHighestSNR(flux,error)
+  row_means = np.mean(flux, 1, keepdims = True)
+  flux = flux - row_means
+  # ref = flux[highSNR]
+  ref = ref-np.mean(ref)
+  ref_autoCorr = signal.correlate(ref, ref, 'same')
+
+  power = np.ceil(np.log2(n))
+  fft_ref = np.fft.rfft(ref,2**power)
+  fft_flux = np.fft.rfft(flux, 2**power, axis=1)
+
+  for foo in range(iterations):
+    fft_corr = correlate(fft_flux, fft_ref,fourier_domain=True)
+    shifts = calcCorrelationOffset(fft_corr, ref_autoCorr, fourier_domain=True,verbose=True)
+    # return fft_corr,shifts
+
+    temp = []
+    for i in tqdm(range(m)):
+      if useN:
+        temp.append(fourierShiftData(fft_flux[i], shifts[i], n,fourier_domain=True))
+      else:
+        temp.append(fourierShiftData(fft_flux[i], shifts[i], fourier_domain=True))
+    # return np.array(afc+row_means)
+    fft_flux = np.array(temp)
+
+  return np.fft.irfft(fft_flux)[:,:n] + row_means
+
+
+
+
+
 
 # ######################################################
 
@@ -709,10 +838,6 @@ def shiftData(y, shift, error=None, ext=3):
   interpolated = interpolate.splev(x - shift, ip, ext=ext)
 
   return interpolated
-
-def fourierShiftData(y, shift):
-  fft_shift = ndimage.fourier_shift(np.fft.rfft(y), shift)
-  return np.fft.irfft(fft_shift)
 
 def findCenterOfPeak(x,y, peak_half_width = 10):
   mid_point = np.argmax(y)
