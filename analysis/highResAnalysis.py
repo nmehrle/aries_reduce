@@ -269,6 +269,7 @@ def calcCorrelationOffset(corr, auto_corr,
 
 def alignment(flux, ref, iterations = 1, 
              error=None, returnShifts = False,
+             padLen = 50, fft_n = None,
              peak_half_width = 3, upSampleFactor = 1000,
              verbose = False
 ):
@@ -279,15 +280,22 @@ def alignment(flux, ref, iterations = 1,
     print(str(iterations) + ' alignment iterations remaining')
 
   m,n = np.shape(flux)
-
+  
   row_means = np.mean(flux, 1, keepdims = True)
   flux = flux - row_means
+  ref  = ref  - np.mean(ref)
 
-  ref = ref-np.mean(ref)
+  ref  = np.pad(ref,padLen,'constant')
+  flux = np.pad(flux, ((0,0),(padLen,padLen)), 'constant')
+
   ref_autoCorr = signal.correlate(ref, ref, 'same')
 
-  fft_ref  = rfft(ref)
-  fft_flux = rfft(flux)
+  fft_ref = rfft(ref)
+  fft_flux, found_fft_n = rfft(flux, returnPadLen=True)
+
+  if fft_n is None:
+    fft_n = found_fft_n
+
 
   fft_corr = correlate(fft_flux, fft_ref,fourier_domain=True)
   shifts = calcCorrelationOffset(fft_corr, ref_autoCorr,
@@ -297,23 +305,25 @@ def alignment(flux, ref, iterations = 1,
   if returnShifts:
     return shifts
 
-  fft_shifted = fourierShift2D(fft_flux, shifts, fourier_domain=True)
+  fft_shifted = fourierShift2D(fft_flux, shifts, n=fft_n, 
+                                fourier_domain=True)
   if error is not None:
-    error       = fourierShift2D(error,    shifts, fourier_domain=False)
+    error = fourierShift2D(error, shifts, fourier_domain=False)
 
   # The truncation makes it so I have to irfft, then rfft each round
-  flux = np.fft.irfft(fft_shifted)[:,:n] + row_means
+  flux = np.fft.irfft(fft_shifted)[:,padLen:n+padLen] + row_means
 
-  return alignment(flux, ref, iterations = iterations-1, error = error,
-    peak_half_width = peak_half_width, upSampleFactor = upSampleFactor,
-    verbose = verbose)
+  return alignment(flux, ref[padLen:n+padLen], 
+    iterations = iterations-1, error = error,
+    padLen = padLen, peak_half_width = peak_half_width,
+    upSampleFactor = upSampleFactor, verbose = verbose)
 
 # ######################################################
 
 # Step 3: 
 # Remove Coherent Structure
 # ######################################################
-def continuumSubtract(data, order, verbose=False):
+def continuumSubtract(data, order, error=None, verbose=False):
   single_spec = (np.ndim(data) == 1)
 
   result = []
@@ -325,8 +335,12 @@ def continuumSubtract(data, order, verbose=False):
   if verbose:
     seq = tqdm(seq, desc='Subtracting Continuums')
 
+  weights = None
+  if error is not None:
+    weights  = 1/error
+
   for spec in seq:
-    spec_polyfit = np.polyfit(x, spec, order)
+    spec_polyfit = np.polyfit(x, spec, order, w=weights)
     continuum = np.polyval(spec_polyfit, x)
     result.append(spec-continuum)
 
@@ -683,10 +697,12 @@ def getTemplate(templateFile, wave):
 
 # Wrapper for np.fft.rfft
 # Automatically pads to length base-2
-def rfft(a, pad=True, axis=-1):
+def rfft(a, pad=True, axis=-1, returnPadLen = False):
   n = np.shape(a)[axis]
   power = int(np.ceil(np.log2(n)))
   if pad:
+    if returnPadLen:
+      return np.fft.rfft(a, 2**power, axis=axis),2**power
     return np.fft.rfft(a, 2**power, axis=axis)
   else:
     return np.fft.rfft(a, axis=axis)
@@ -745,31 +761,33 @@ def shiftData(y, shift, error=None, ext=3):
 
 # Shifts data quickly,
 # Option to pass data already in fourier domain
-def fourierShift1D(y, shift,n=-1,fourier_domain=False):
+def fourierShift1D(y, shift, n=-1, fourier_domain=False):
   if not fourier_domain:
-    y = np.fft.rfft(y)
+    m = len(y)
+    y, n = rfft(y,returnPadLen=True)
 
-  fft_shift = ndimage.fourier_shift(y, shift,n)
+  fft_shift = ndimage.fourier_shift(y, shift, n)
 
   if not fourier_domain:
-    return np.fft.irfft(fft_shift)
+    return np.fft.irfft(fft_shift)[:m]
 
   return fft_shift
 
 def fourierShift2D(a, shifts, n=-1, fourier_domain=False):
   if not fourier_domain:
-    a = np.fft.rfft(a,axis=-1)
+    m = np.shape(a)[1]
+    a,n = rfft(a, returnPadLen=True)
 
   temp = []
   for i in range(len(a)):
-    temp.append(fourierShift1D(a[i], shifts[i], fourier_domain=True))
+    temp.append(fourierShift1D(a[i], shifts[i], n=n, fourier_domain=True))
 
   if not fourier_domain:
-    return np.fft.irfft(temp)
+    return np.fft.irfft(temp)[:,:m]
 
   return np.array(temp)
 
-def upSampleData(x, y, error=None, upSampleFactor = 10, ext=3):
+def upSampleData(x, y, upSampleFactor = 10, error=None, ext=3):
   upSampX = np.linspace(x[0], x[-1], len(x)*upSampleFactor)
 
   weights = None
