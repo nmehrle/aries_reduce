@@ -30,7 +30,10 @@ def collectData(order, data_dir, data_pre, data_pos,
                 discard_rows = [],
                 discard_cols = [],
                 doAlign = True,
-                verbose = False
+                alignmentIterations = 1,
+                padLen = 50, fft_n = None,
+                peak_half_width = 3, upSampleFactor = 1000,
+                verbose = False, oldAlign=False
 ):
   ''' 
     discard_data: rows to discard 
@@ -65,7 +68,17 @@ def collectData(order, data_dir, data_pre, data_pos,
   flux, wave, error = trimData(flux, wave, error)
 
   if doAlign:
-    flux, error = alignData(flux, error, wave, verbose = verbose)
+    highSNR = getHighestSNR(flux,error)
+    ref = flux[highSNR]
+
+    if oldAlign:
+      flux,error = alignData(flux,error,verbose=True)
+    else:
+      flux, error = alignment(flux, ref, iterations=alignmentIterations,
+        error = error, padLen = padLen, fft_n = fft_n,
+        peak_half_width = peak_half_width,
+        upSampleFactor = upSampleFactor, verbose = verbose)
+    
 
   template = getTemplate(templateFile, wave)
 
@@ -220,6 +233,90 @@ def trimData(flux, wave, error, sigma = 10, neighborhood_size=20, edge_discard=1
   return bound_flux, bound_wave, bound_error
 
 # ######################################################
+# Gives alignment fixes from crosscorrelations with highSNR spectrum
+# Shift value is center(highSNR) - center(this_spec)
+#  I.e. negative shift value indicates this spectra is moved right, needs to be moved left
+def findPixelShifts(flux, error, interpolation_half_width = 2, 
+                      peak_half_width = 0.9, 
+                      upSampleFactor = 5,
+                      verbose = False,
+                      xcorMode = 'same',
+                      doQuadFit = True,
+                      doZoom = False
+):
+  highSNR = getHighestSNR(flux, error)
+
+  ref_spec = flux[highSNR] - np.mean(flux[highSNR])
+  auto_cor = signal.correlate(ref_spec, ref_spec, xcorMode)
+  zero_point = np.argmax(auto_cor)
+
+  centers = []
+
+  seq = range(len(flux))
+  if verbose:
+    seq = tqdm(seq, desc="Finding Shifts")
+
+  for i in seq:
+    spec = flux[i]
+    xcor = signal.correlate(spec-np.mean(spec), ref_spec, xcorMode)
+    mid_point = np.argmax(xcor)
+
+    #upsample the Cross Correlation Peak
+    xcor_lb = mid_point - interpolation_half_width
+    xcor_rb = mid_point + interpolation_half_width + 1
+
+    peak_x = range(xcor_lb,xcor_rb)
+    peak   = xcor[xcor_lb:xcor_rb]
+
+    if doZoom:
+      upSamp= np.linspace(peak_x[0],peak_x[-1],len(peak_x)*upSampleFactor)
+      upSampPeak = ndimage.zoom(peak, upSampleFactor)
+    else:
+      upSamp, upSampPeak = upSampleData(peak_x, peak, upSampleFactor)
+
+    upSampPeakHW = int(peak_half_width * upSampleFactor)
+
+    if doQuadFit:
+      center = findCenterOfPeak(upSamp, upSampPeak, upSampPeakHW)
+    else:
+      center = upSamp[np.argmax(upSampPeak)]
+
+    centers.append(center)
+
+  return  zero_point - np.array(centers)
+
+def applyShifts(flux, error, shifts,
+                verbose = False
+):
+  seq = range(len(flux))
+  if verbose:
+    seq = tqdm(seq, desc='Aligning Spectra')
+
+  aligned_flux  = np.zeros(np.shape(flux))
+  aligned_error = np.zeros(np.shape(error))
+
+
+  for i in seq:
+    aligned_flux[i] = ndimage.shift(flux[i],shifts[i],mode='nearest')
+    aligned_error[i] = ndimage.shift(error[i],shifts[i],mode='nearest')
+  return aligned_flux, aligned_error
+
+def alignData(flux, error,
+                interpolation_half_width = 2, 
+                peak_half_width = 1.2, 
+                upSampleFactor = 2000,
+                verbose = False,
+                xcorMode = 'same'
+):
+  shifts = findPixelShifts(flux, error,
+            interpolation_half_width=interpolation_half_width,
+            peak_half_width=peak_half_width,
+            upSampleFactor=upSampleFactor,
+            verbose=verbose,
+            xcorMode=xcorMode)
+
+  aligned_flux, aligned_error = applyShifts(flux,error,shifts,verbose)
+  return aligned_flux, aligned_error
 
 # Step 2:
 # Align Data
@@ -268,15 +365,17 @@ def calcCorrelationOffset(corr, auto_corr,
   return  zero_point - np.array(centers)
 
 def alignment(flux, ref, iterations = 1, 
-             error=None, returnShifts = False,
+             error=None, returnOffset = False,
              padLen = 50, fft_n = None,
              peak_half_width = 3, upSampleFactor = 1000,
              verbose = False
 ):
   if iterations <= 0:
+    if error is not None:
+      return flux, error
     return flux
 
-  if verbose and not returnShifts:
+  if verbose and not returnOffset:
     print(str(iterations) + ' alignment iterations remaining')
 
   m,n = np.shape(flux)
@@ -298,17 +397,17 @@ def alignment(flux, ref, iterations = 1,
 
 
   fft_corr = correlate(fft_flux, fft_ref,fourier_domain=True)
-  shifts = calcCorrelationOffset(fft_corr, ref_autoCorr,
+  offsets = calcCorrelationOffset(fft_corr, ref_autoCorr,
                fourier_domain = True, peak_half_width = peak_half_width,
               upSampleFactor = upSampleFactor, verbose=verbose)
 
-  if returnShifts:
-    return shifts
+  if returnOffset:
+    return offsets
 
-  fft_shifted = fourierShift2D(fft_flux, shifts, n=fft_n, 
+  fft_shifted = fourierShift2D(fft_flux, offsets, n=fft_n, 
                                 fourier_domain=True)
   if error is not None:
-    error = fourierShift2D(error, shifts, fourier_domain=False)
+    error = fourierShift2D(error, offsets, fourier_domain=False)
 
   # The truncation makes it so I have to irfft, then rfft each round
   flux = np.fft.irfft(fft_shifted)[:,padLen:n+padLen] + row_means
@@ -424,51 +523,51 @@ def sysrem(data, error,
 def varianceWeighting(data):
   return np.nan_to_num(data/np.var(data,0))
 
-
-def getTimeMask(flux, cutoff = 3, mode=1, smoothingFactor = 20):
-  # Modes:
-  # 1: zeroMean, std
-  # 2: zeroMean, 1/std
-  # 3: std
-  # 4: 1/std
-  # 5: mean/std
-  if mode == 1:
-    zeroMean = flux-np.mean(flux,0)
-    weights  = np.std(zeroMean,0)
-  elif mode == 2:
-    zeroMean = flux-np.mean(flux,0)
-    weights  = 1/np.std(zeroMean,0)
-  elif mode == 3:
-    weights  = np.std(flux,0)
-  elif mode == 4:
-    weights  = 1/np.std(flux,0)
-  elif mode == 5:
-    weights  = np.mean(flux,0)/np.std(flux,0)
+def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
+                smoothingFactor = 20
+):
+  weights  = np.apply_along_axis(snr, 0, flux)
+  if np.any(weights < 0):
+    print('Warning, some weights (SNRs) are less than zero, consider using non zero-mean values for generating mask')
+    absoluteCutoff = -np.inf
 
   weightMean = np.mean(weights)
   weightStd  = np.std(weights)
 
-  upperMask = weights > weightMean + cutoff*weightStd
-  lowerMask = weights < weightMean - cutoff*weightStd
+  lowerMask = weights < weightMean - relativeCutoff*weightStd
+  absoluteMask = weights < absoluteCutoff
 
-  mask = 1-np.logical_or(upperMask,lowerMask)
+  mask = 1-np.logical_or(lowerMask,absoluteMask)
+
+
   return ndimage.minimum_filter(mask, smoothingFactor)
 
+def getWaveMask(flux, window_size=100, relativeCutoff = 3,
+                  absoluteCutoff = 0, smoothingFactor = 20
+):
+  medSpec = np.median(flux,0)
+  weights = ndimage.generic_filter(medSpec, snr, size=window_size)
+
+  weightMean = np.mean(weights)
+  weightStd  = np.std(weights)
+
+  lowerMask = weights < weightMean - relativeCutoff*weightStd
+  absoluteMask = weights < absoluteCutoff
+
+  mask = 1-np.logical_or(lowerMask,absoluteMask)
+
+  return ndimage.minimum_filter(mask, smoothingFactor)
 
 def applyMask(data, mask):
-  new_sum = np.sum(data) - np.sum(data * (1-mask))
-  new_len = np.sum(mask)*len(data)
+  # Number of 'good' points remaining per row
+  num_unmasked = np.sum(mask)
 
-  meanSub = data - new_sum/new_len
-  return meanSub*mask
+  # mean of row after masking (excluding 'bad' (to be masked) vals)
+  new_mean = np.sum(data*mask,-1,keepdims=1)/num_unmasked
 
-def snr(data):
-  return np.mean(data)/np.std(data)
+  y = data - new_mean
 
-def getWaveMask(flux, window_size = 100, cutoff = 3):
-  medSpec = np.median(flux,0)
-  snrs = ndimage.generic_filter(medSpec, snr, size=window_size)
-  return snrs
+  return y*mask
 
 # Step 4:
 # Compare To Template
@@ -694,6 +793,8 @@ def getTemplate(templateFile, wave):
 '''
 # Math
 # ######################################################
+def snr(data):
+  return np.mean(data)/np.std(data)
 
 # Wrapper for np.fft.rfft
 # Automatically pads to length base-2
@@ -729,22 +830,18 @@ def correlate(target, reference, fourier_domain = False):
 # Applies the transformation to correct for circular/non-circular
 # ffts
 def ifftCorrelation(fft_corr, n=None):
-  corr = np.fft.irfft(fft_corr)
-  m = np.shape(corr)[1]
-  mid_point = int(m/2)
-  second_half = corr[:,:mid_point]
-  first_half  = corr[:,mid_point:]
-
-  corr = np.concatenate((first_half,second_half), axis=1)
+  corr = np.fft.irfft(fft_corr)  
   if n == None:
-    return corr
+    m = np.shape(corr)[1]
+    mid_point = int(m/2)
+    second_half = corr[...,:mid_point]
+    first_half  = corr[...,mid_point:]
 
-  diff = m - n
-  if diff <= 0:
+    corr = np.concatenate((first_half , second_half), axis = -1)
     return corr
-
-  corr = corr[:,int(np.ceil(diff/2)):-int(np.floor(diff/2))]
-  return corr
+  else:
+    m = int(n/2)
+    return np.concatenate((corr[...,-m:] , corr[...,:m]), axis = -1)
 
 # Shifts data considering errors
 def shiftData(y, shift, error=None, ext=3):
