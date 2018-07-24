@@ -57,42 +57,42 @@ Sample code for adding data to database
 def addToDb(dbname):
   obsdb = json(dbname)
   
-  date = '2016oct16'
+  date = '2016oct20'
   data = {}
 
   _aphome = os.path.expanduser('~')[1:].replace('/','_')
 
-  data['planet']       = 'Upsilon Andromedae b'
+  data['planet']       = 'WASP-33 b'
   data['prefix']       = 'spec_'
 
   # Full Range
-  data['fullframelist'] = range(73,3824+1)
-  data['framelist']    = range(73,3824+1)
+  data['fullframelist'] = range(118,191+1)
+  data['framelist']    = range(118,191+1)
 
 
   data['flatlist']     = {
-                            90: range(13,37+1)+range(68,70+1),
-                            85: [45,67],
-                            80: [46,66],
-                            75: [47,65],
-                            70: [48,64],
-                            65: [49,63],
-                            60: [62],
-                            55: [51,61],
-                            50: [52,60],
-                            45: [53,59],
-                            40: [54,58],
-                            35: [55,57],
-                            30: [56]
+                            90: [26,27,28,29,30,55,56,57],
+                            85: [31,54],
+                            80: [32,53],
+                            75: [33,52],
+                            70: [34,51],
+                            65: [35,50],
+                            60: [36,49],
+                            55: [37,48],
+                            50: [38,47],
+                            45: [39,46],
+                            40: [40,45],
+                            35: [41,44],
+                            30: [42,43]
                          }
-  data['darklist']     = range(3825, 3875+1)
-  data['darkflatlist'] = range(38, 44+1)
-  data['darkcallist']  = range(3825, 3875+1)
-  data['callist']      = range(73, 78)
-  data['datadir']      = '2016oct16/'
-  data['ap_suffix']    = 'database/ap_' + _aphome + '_Documents_science_spectroscopy_2016oct16_proc_'
+  data['darklist']     = range(193, 207+1)
+  data['darkflatlist'] = range(193, 207+1)
+  data['darkcallist']  = range(193, 207+1)
+  data['callist']      = range(118,122+1)
+  data['datadir']      = '2016oct20/'
+  data['ap_suffix']    = 'database/ap_' + '_dash_exobox_proj_pcsa_data_proc_2016oct20'
   data['n_aperture']   = 6
-  data['filter']       = 'OPEN5'
+  data['filter']       = 'OPEN6'
   data['calnod']       = False
 
   obsdb[date] = data
