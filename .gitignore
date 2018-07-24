@@ -7,6 +7,6 @@ database/
 logfile
 *.todo
 *_summary.txt
-rundbm.py
 .ipynb_checkpoints
 analysis/
+exobox_summaries/
