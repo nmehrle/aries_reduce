@@ -57,7 +57,7 @@ Sample code for adding data to database
 def addToDb(dbname):
   obsdb = json(dbname)
   
-  date = '2016oct20'
+  date = '2016oct15b'
   data = {}
 
   _aphome = os.path.expanduser('~')[1:].replace('/','_')
@@ -66,33 +66,33 @@ def addToDb(dbname):
   data['prefix']       = 'spec_'
 
   # Full Range
-  data['fullframelist'] = range(118,191+1)
-  data['framelist']    = range(118,191+1)
+  data['fullframelist'] = range(173,216+1)
+  data['framelist']     = range(173,216+1)
 
 
   data['flatlist']     = {
-                            90: [26,27,28,29,30,55,56,57],
-                            85: [31,54],
-                            80: [32,53],
-                            75: [33,52],
-                            70: [34,51],
-                            65: [35,50],
-                            60: [36,49],
-                            55: [37,48],
-                            50: [38,47],
-                            45: [39,46],
-                            40: [40,45],
-                            35: [41,44],
-                            30: [42,43]
+                            90: [30,31,32,62,63,64],
+                            85: [33,61],
+                            80: [34,60],
+                            75: [35,59],
+                            70: [36,58],
+                            65: [37,57],
+                            60: [38,56],
+                            55: [39,55],
+                            50: [40,54],
+                            45: [41,42,43,53],
+                            40: [44,45,46,52],
+                            35: [47,51],
+                            30: [48,49,50]
                          }
-  data['darklist']     = range(193, 207+1)
-  data['darkflatlist'] = range(193, 207+1)
-  data['darkcallist']  = range(193, 207+1)
-  data['callist']      = range(118,122+1)
-  data['datadir']      = '2016oct20/'
-  data['ap_suffix']    = 'database/ap_' + '_dash_exobox_proj_pcsa_data_proc_2016oct20'
-  data['n_aperture']   = 6
-  data['filter']       = 'OPEN6'
+  data['darklist']     = range(230, 232+1)
+  data['darkflatlist'] = range(217, 221+1)
+  data['darkcallist']  = range(227, 229+1)
+  data['callist']      = range(165, 169+1)
+  data['datadir']      = '2016oct15b/'
+  data['ap_suffix']    = 'database/ap_' + '_dash_exobox_proj_pcsa_data_proc_2016oct15b'
+  data['n_aperture']   = 7
+  data['filter']       = 'Karies'
   data['calnod']       = False
 
   obsdb[date] = data
