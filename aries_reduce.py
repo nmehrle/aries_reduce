@@ -86,7 +86,7 @@ from functools import partial
 data = '2016oct15' # GX And
 data = '2016oct15b' # WASP-33
 data = '2016oct19' # WASP-33
-# data = '2016oct20b' # WASP-33
+data = '2016oct20b' # WASP-33
 # data = '2016oct16' #Ups And
 
 # Optional change in directory structure for Exobox
