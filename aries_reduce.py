@@ -85,15 +85,15 @@ from functools import partial
 
 data = '2016oct15' # GX And
 data = '2016oct15b' # WASP-33
-data = '2016oct19' # WASP-33
-data = '2016oct20b' # WASP-33
-data = '2016oct16' #Ups And
+# data = '2016oct19' # WASP-33
+# data = '2016oct20b' # WASP-33
+# data = '2016oct16' #Ups And
 
-# Optional change in directory structure (Legacy)
-local = True
+# Optional change in directory structure for Exobox
+local = False
 
 # Determines which subroutines to run
-makeDark    = False
+makeDark    = True
 makeFlat    = False
 makeMask    = False
 
@@ -114,7 +114,7 @@ idTargAperatures = False
 
 # SaveAsPickleFiles
 # Recommended to use the python 3 routine pickler.py
-pickleFiles = True
+pickleFiles = False
 
 # WhatToSave
 # For PreprocessTarg
@@ -147,34 +147,47 @@ dispersion = 0.075  # Resampled dispersion, in angstroms per pixel (approximate)
 flat_threshold = 500
 
 # Set number of processors to use for processTarg
-# 0 : max number of processors on your machine
-# -1: all but 1 processor on your machine
-num_processors = -1
+#  0 : max number of processors on your machine
+# -1 : all but 1 processor on your machine
+# -2 : prompt user
+num_processors = -2
 
 dir0 = os.getcwd()
 
-if local:
-    _iraf = ns._home + "/iraf/"
-else:
-    _iraf = ns._home + "/atwork/iraf/"
 
 # User Specific Directories
-_raw  = ns._home + "/documents/science/spectroscopy/" + data +"/raw/"
-_proc = ns._home + "/documents/science/spectroscopy/" + data +"/proc/"
-telluric_list = ns._home + '/documents/science/spectroscopy/telluric_lines/hk_band_lines.dat'
-_corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
+dir_data = data
+if data[-1].isalpha():
+    dir_data = data[:-1]
+
+if local:
+    _iraf = ns._home + "/iraf/"
+    _raw  = ns._home + "/documents/science/spectroscopy/" + dir_data +"/raw/"
+    _proc = ns._home + "/documents/science/spectroscopy/" + data +"/proc/"
+    telluric_list = ns._home + '/documents/science/spectroscopy/telluric_lines/hk_band_lines.dat'
+    _corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
+else:
+    _raw  = "/dash/exobox/proj/pcsa/data/raw/"  + dir_data + "/spec/"
+    _proc = "/dash/exobox/proj/pcsa/data/proc/" + data + "/"
+    _corquad = "/dash/exobox/code/python/nmehrle/corquad"
+    _iraf = "/dash/exobox/code/python/nmehrle/iraf"
 
 
 ################################################################
 ################### END User Input Variables ###################
 ################################################################
 
-
 # Initialize routine
 # Set in if statement to enable code-folding
 if True:
     num_available_cpus = mp.cpu_count()
-    if num_processors > num_available_cpus or num_processors == -1:
+    if num_processors == -2:
+        if processCal or processTarg or preProcCal or preProcTarg:
+            print('This machine has '+ str(num_available_cpus) +" CPUs available. \nInput how many you'd like to use:")
+            num_processors = raw_input()
+        else:
+            num_processors = 1
+    elif num_processors > num_available_cpus or num_processors == -1:
         num_processors = num_available_cpus -1
     elif num_processors == 0:
         num_processors = num_available_cpus
@@ -220,7 +233,7 @@ if True:
     ir.load('twodspec')
     ir.load('apextract')
 
-    if(not os.path.exists(telluric_list) and processCal):
+    if processCal and not os.path.exists(telluric_list):
         raise IOError('No such file or directory '+telluric_list+'. Update telluric_list to point to file with telluric line list for your data.')
 
     if filter=='K' or filter=='H':
