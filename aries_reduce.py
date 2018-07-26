@@ -16,7 +16,7 @@ This to check on a new system:
 2) PyRAF's "apnormalize" routines contain a parameter file called
    "apnorm1.par", which contains references to "apnorm.background" --
    these must all be changed to "apnormalize.background"
- 
+
 Other notes:
 
 1) If the spectral tracing keeps crashing ("Trace of aperture N lost
@@ -85,7 +85,7 @@ from functools import partial
 
 data = '2016oct15' # GX And
 data = '2016oct15b' # WASP-33
-# data = '2016oct19' # WASP-33
+data = '2016oct19' # WASP-33
 # data = '2016oct20b' # WASP-33
 # data = '2016oct16' #Ups And
 
@@ -137,7 +137,7 @@ interactive = True
 # Use iraf.apflatten to flatten blaze fn
 # If false uses Ian's custom routine
 # Part of Make Flat
-irafapflatten = True 
+irafapflatten = True
 
 verbose = True
 
@@ -255,7 +255,7 @@ if True:
         trace_step = 10
         trace_order = 3
         quadcorrect = True # Correct for detector crosstalk
-    else: 
+    else:
         observ = 'keck'
         itime = 'itime'
         date = 'date-obs'
@@ -265,7 +265,7 @@ if True:
         trace_step = 50
         trace_order = 7
         quadcorrect = False # Correct for detector crosstalk
-        
+
     if filter=='K':
         cleanec = True
         cleancr = False
@@ -306,27 +306,27 @@ if True:
     bsamp   = "-18:-10,10:18"
     bfunc = 'chebyshev'
     bord = 3   # background subtraction function order
-    
+
     idlexec = os.popen('which idl').read().strip()
-    
+
     postfn  = ".fits"
     maskfn  = ".pl"
 
-    ##### Sets keywords for filenames 
+    ##### Sets keywords for filenames
     ################################################################
     ################################################################
     _sflat     = _proc + prefn + "_flat"
     _sflats    = _proc + prefn + "_flat_sig"
-    _sflatdc   = _proc + prefn + "_flatd" 
-    _sflatdcn  = _proc + prefn + "_flatdn" 
-    
-    _sdark = _proc + prefn + "_dark" 
+    _sflatdc   = _proc + prefn + "_flatd"
+    _sflatdcn  = _proc + prefn + "_flatdn"
+
+    _sdark = _proc + prefn + "_dark"
     _sdarks = _proc + prefn + "_dark_sig"
     _sdarkflat = _proc + prefn + "_darkflat"
     _sdarkflats = _proc + prefn + "_darkflats"
     _sdarkcal  = _proc + prefn + "_darkcal"
     _sdarkcals  = _proc + prefn + "_darkcals"
-    
+
     _mask1  = _proc + prefn + "_badpixelmask1"  + maskfn
     _mask2  = _proc + prefn + "_badpixelmask2"  + maskfn
     _mask3  = _proc + prefn + "_badpixelmask3"  + maskfn
@@ -334,7 +334,7 @@ if True:
     _fmask  = _proc + prefn + "_flatpixelmask"  + maskfn
     _dmask  = _proc + prefn + "_darkpixelmask"  + postfn
     _wldat = 'ec'
-    
+
     rawdark  = ns.strl2f(_proc+'rawdark', obs['darkfilelist'], clobber=True)
     rawdarkflat = ns.strl2f(_proc+'rawdarkflat', obs['darkflatlist'], clobber=True)
     rawdarkcal  = ns.strl2f(_proc+'rawdarkcal', obs['darkcallist'], clobber=True)
@@ -384,15 +384,15 @@ if True:
 
     ################################################################
     ################################################################
-    
+
     ir.unlearn('imcombine')
     ir.unlearn('echelle')
-    
+
     # Set parameters for aperture tracing, flat-field normalizing, etc.
     ###################################################################
     ###################################################################
     ir.apextract.dispaxis = 1
-    
+
     ir.echelle.dispaxis = 1
     ir.echelle.apedit.width = t_width
     ir.echelle.apfind.minsep = 10.
@@ -400,20 +400,20 @@ if True:
     ir.echelle.apfind.nfind = n_ap
     ir.echelle.apfind.recenter = "Yes"
     ir.echelle.apfind.nsum = -3
-    
+
     ir.apall.ylevel = "INDEF" #0.05
     ir.apall.bkg = "Yes"
     ir.apall.ulimit = 2
     ir.apall.llimit = -2
-    
-    
+
+
     ir.aptrace.order = trace_order
     ir.aptrace.niterate = 3
     ir.aptrace.step = trace_step
     ir.aptrace.naverage = 1
     ir.aptrace.nlost = 999
     ir.aptrace.recenter = "yes"
-    
+
     # Set detector properties:
     gain = 4.0  # photons (i.e., electrons) per data unit
     readnoise = 10.0   # photons (i.e., electrons)
@@ -423,7 +423,7 @@ if True:
     ir.apall.readnoise = readnoise
     ir.apnormalize.gain = gain
     ir.apnormalize.readnoise = readnoise
-    
+
 
     ir.set(observatory=observ)
 ###################################################################
@@ -439,7 +439,7 @@ if makeDark:
     ir.imdelete(_sdarkcal)
     ir.imdelete(_sdarkcals)
 
-        
+
     if verbose: print "rawdark file list >>\n" + rawdark
     ir.imcombine("@"+rawdark, output=_sdark, combine="average",reject="avsigclip", sigmas=_sdarks, scale="none", weight="none", bpmasks="")
     ns.write_exptime(_sdark, itime=itime)
@@ -457,7 +457,7 @@ if makeDark:
 ###################################################################
 
 if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
-    if verbose: 
+    if verbose:
         print "Making flat frames"
         print "----------------------------------------"
         print "----------------------------------------"
@@ -482,7 +482,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
       ir.imdelete(_sflatdcn+'big')
 
     # Correct for dectector crosstalk
-    if verbose: 
+    if verbose:
 
         print 'Correcting aries crosstalk'
         print "----------------------------------------"
@@ -490,14 +490,14 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
 
     ns.correct_aries_crosstalk(rawflat_list, output=procflat_list, corquad=_corquad)
 
-    if verbose: 
+    if verbose:
         print "----------------------------------------"
         print 'Done correcting aries crosstalk'
 
     # 2008-06-04 08:42 IJC: Scale and combine the flats appropriately (as lamp is warming up, flux changes)
 
     # Makes median flat(s)
-    if verbose: 
+    if verbose:
         print "Combining flat fields"
         print "----------------------------------------"
     def combineflats(inflats, outflat, outflatdc, darkflat,flat_sigmas=None):
@@ -513,12 +513,12 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
         for angle, flatlist in procflatfile_dict.items():
             combineflats(flatlist, _sflat_dict[angle], _sflatdc_dict[angle],_sdarkflat) #flat_sigmas = _sflats_dict[angle]
 
-    if verbose: 
+    if verbose:
         print "----------------------------------------"
         print "Done Combining flat frame(s)!"
 
     # Corrects blaze function (Flattens flat frames)
-    if verbose: 
+    if verbose:
         print "----------------------------------------"
         print "Correcting for flat field blaze functions"
         print "----------------------------------------"
@@ -573,7 +573,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
 ###################################################################
 ###################################################################
 
-if makeMask:  
+if makeMask:
     if verbose:
         print "Beginning to make bad pixel masks..."
         print "----------------------------------------"
@@ -606,12 +606,12 @@ if makeMask:
 
     ns.cleanec(_sflatdc+'neg', 'blahneg', npasses=5, clobber=True, badmask=_mask2.replace(maskfn, postfn))
     #pyfits.writeto(_mask2, ny.zeros(pyfits.getdata(_sflatdc+postfn).shape, dtype=int), clobber=True)
-    
+
     # create a final binary mask from the 2 masks:
     #ir.imcalc(_mask1+","+_mask2, _fmask, "im1||im2")
     pyfits.writeto(_fmask.replace(maskfn, postfn), ny.logical_or(pyfits.getdata(_mask1.replace(maskfn, postfn)), pyfits.getdata(_mask2.replace(maskfn, postfn))).astype(int), clobber=True)
     #ir.imcopy(_fmask.replace(maskfn, postfn), _fmask)
-        
+
     # clean up after myself:
     ir.imdelete(_mask1+','+_mask2+','+_sflatdc+'neg,blah,blahneg')
 
@@ -627,14 +627,14 @@ if makeMask:
     #ir.imcalc(_fmask+","+_dmask, _mask, "im1||im2")
     pyfits.writeto(_mask.replace(maskfn, postfn), ny.logical_or(pyfits.getdata(_fmask.replace(maskfn, postfn)), pyfits.getdata(_dmask)).astype(float), clobber=True)
     ir.imcopy(_mask.replace(maskfn, postfn), _mask)
-    
 
 
-    if verbose:  
+
+    if verbose:
         print "Done making bad pixel mask!"
         print "----------------------------------------"
 ###################################################################
-###################################################################     
+###################################################################
 
 if preProcData:
     flat_for_proc = _sflatdcn
@@ -681,9 +681,9 @@ if procData:
         # Extract raw spectral data from the echelle images
           ir.imdelete('@'+speccal)
           ir.apall('@'+proccal, output='@'+speccal, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, weights='variance', bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')
-        
+
         if verbose:  print "Done extracting spectra from cal stars!"
-        
+
         ir.imdelete(meancal)
         if calnod:
             shutil.copyfile(obs['speccalfilelist'][0]+postfn, meancal+postfn)
@@ -702,11 +702,11 @@ if procData:
         w = w[::-1]
         hdr = pyfits.getheader(meancal+postfn)
         pyfits.writeto('wmc'+postfn, w, hdr, clobber=True, output_verify='ignore')
-                    
+
         w_interp   = ns.wl_grid(w, dispersion, method='linear')
         #w_interp = w_interp[ny.argsort(w_interp.mean(1))]
         hdr_interp = pyfits.getheader(meancal+postfn)
-        
+
         pyfits.writeto('winterp'+postfn, w_interp, hdr_interp, clobber=True, output_verify='ignore')
         ns.interp_spec(meancal, w, w_interp, k=3.0, suffix='int', badval=badval, clobber=True,verbose=True)
 
@@ -778,7 +778,7 @@ if procData:
           't_function'  : 'chebyshev'
         }
 
-        def processEachTarg(i, input_list, output_list, apall_kws): 
+        def processEachTarg(i, input_list, output_list, apall_kws):
             ir.apall(input_list[i], output=output_list[i],**apall_kws)
             if saveCorrectedImg == False:
                 ir.imdelete(input_list[i])
@@ -795,7 +795,7 @@ if procData:
             pbar.update()
         pbar.close()
         if verbose:  print "Done extracting spectra from target stars!"
-        
+
         # Sample each aperture so that they all have equal pixel widths
         #   and equal logarithmic wavelength coverage:
         ir.ecreidentify('@'+spectarg, meancal, database=_wldat, refit='no', shift=0)
@@ -834,7 +834,7 @@ if procData:
 
         pbar.close()
         filelist.close()
-        
+
 if telluricCorrect:
     # Write target and Mean Standard to text files for telluric correction:
     # Should be looped over
@@ -858,15 +858,15 @@ if telluricCorrect:
         for element in temp:
             if element.find('tellspec')>-1: print element
         _telluric = raw_input('Filename:   ')
-    
+
     if _telluric=='q':
         pass
     else:
         # Read telluric file; put in the right format.
         objspec_telcor = ny.loadtxt(_telluric.replace('_tellspec', ''))
         objspec_raw = ny.loadtxt(filename + 'int.dat')
-        
-        
+
+
         infile = open(_telluric, 'r')
         data = [map(float,line.split()) for line in infile]
         infile.close()
@@ -889,7 +889,7 @@ if telluricCorrect:
         telluric2_err /= np.median(telluric2)
         telluric2 /= np.median(telluric2)
         invtelluric3 = np.vstack((telluric2, telluric2_err)).reshape(tl_shape)
-        
+
         tel_scalefac = np.median(telluric)
         telluric = telluric / tel_scalefac
 
@@ -897,7 +897,7 @@ if telluricCorrect:
         # Divide all target frames by the telluric corrector:
         filelist = open(spectarg)
         for line in filelist:
-            filename = line.strip() + 'int' 
+            filename = line.strip() + 'int'
             hdr  = pyfits.getheader(filename + postfn)
             data = pyfits.getdata(  filename + postfn)
             data = data[ [0,-2], ::-1, :]
