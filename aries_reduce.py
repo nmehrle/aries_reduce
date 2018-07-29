@@ -85,16 +85,16 @@ from functools import partial
 
 data = '2016oct15' # GX And
 data = '2016oct15b' # WASP-33
-data = '2016oct19' # WASP-33
-data = '2016oct20b' # WASP-33
+# data = '2016oct19' # WASP-33
+# data = '2016oct20b' # WASP-33
 # data = '2016oct16' #Ups And
 
 # Optional change in directory structure for Exobox
 local = False
 
 # Determines which subroutines to run
-makeDark    = True
-makeFlat    = False
+makeDark    = False
+makeFlat    = True
 makeMask    = False
 
 # Calibration Frames
@@ -169,7 +169,7 @@ if local:
 else:
     _raw  = "/dash/exobox/proj/pcsa/data/raw/"  + dir_data + "/spec/"
     _proc = "/dash/exobox/proj/pcsa/data/proc/" + data + "/"
-    _corquad = "/dash/exobox/code/python/nmehrle/corquad"
+    _corquad = "/dash/exobox/code/python/nmehrle/corquad/corquad.e"
     _iraf = "/dash/exobox/code/python/nmehrle/iraf"
 
 
@@ -503,6 +503,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     def combineflats(inflats, outflat, outflatdc, darkflat,flat_sigmas=None):
         ir.imcombine("@"+inflats,output=outflat, combine="average",reject="crreject", scale="median", weight="median", bpmasks="") # sigmas=flat_sigmas
         ns.write_exptime(outflat, itime=itime)
+        print(outflat)
 
         ir.ccdproc(outflat, output=outflatdc, ccdtype="", fixpix="no", overscan="no",trim="no",zerocor="no",darkcor="yes",flatcor="no", dark=darkflat)
     #master flat
