@@ -94,11 +94,11 @@ local = False
 
 # Determines which subroutines to run
 makeDark    = False
-makeFlat    = True
+makeFlat    = False
 makeMask    = False
 
 # Calibration Frames
-preProcCal  = False
+preProcCal  = True
 processCal  = False
 calApp      = False
 
@@ -163,7 +163,7 @@ if data[-1].isalpha():
 if local:
     _iraf = ns._home + "/iraf/"
     _raw  = ns._home + "/documents/science/spectroscopy/" + dir_data +"/raw/"
-    _proc = ns._home + "/documents/science/spectroscopy/" + data +"/proc/"
+    _proc = ns._home + "/documents/science/spectroscopy/" + dir_data +"/proc/"
     telluric_list = ns._home + '/documents/science/spectroscopy/telluric_lines/hk_band_lines.dat'
     _corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
 else:
@@ -184,7 +184,7 @@ if True:
     if num_processors == -2:
         if processCal or processTarg or preProcCal or preProcTarg:
             print('This machine has '+ str(num_available_cpus) +" CPUs available. \nInput how many you'd like to use:")
-            num_processors = raw_input()
+            num_processors = int(raw_input())
         else:
             num_processors = 1
     elif num_processors > num_available_cpus or num_processors == -1:

@@ -2524,7 +2524,7 @@ def cleanec(input, output, **kw):
             #   otherwise, return average of former & latter
             firstbadval = maxind[repind]==0
             lastbadval = maxind[repind]==(segs.shape[1]-1)
-            midbadval = True - (firstbadval + lastbadval)
+            midbadval = True ^ (firstbadval + lastbadval)
             maxind2 = maxind[repind][midbadval]
             repind2 = find(repind)[midbadval]
     
