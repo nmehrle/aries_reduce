@@ -20,11 +20,19 @@ if type_of_script() == 'jupyter':
 else:
   from tqdm import tqdm
 
+# Sections:
+  # Composite Functions - Wraps everything Together
+  # Misc - Plotting
+  # Step 0: Raw Data
+  # Step 1: Removing Bad Data
+  # Step 2: Aligns Data
+  # Step 3: Remove Coherent Structure
+  # Step 4: Comparing to Template
+  # Template Functions - Getting Template, Injecting fake signal
+  # Math - Generic Math Functions
+  # Physics - Generic Physics functions
 
-'''
-   Composite Functions
-'''
-# Performs Steps 0-2 all at once
+#-- Composite Functions
 def collectData(order, data_dir, data_pre, data_pos,
                 header_file, templateFile,
                 discard_rows = [],
@@ -33,12 +41,10 @@ def collectData(order, data_dir, data_pre, data_pos,
                 alignmentIterations = 1,
                 padLen = 50, fft_n = None,
                 peak_half_width = 3, upSampleFactor = 1000,
-                verbose = False, oldAlign=False
+                verbose = False
 ):
-  ''' 
-    discard_data: rows to discard 
-  '''
-
+  """ #Performs Steps 0-2 all at once
+  """
   #Load Raw Data
   dataFileName = data_dir+data_pre+str(order)+data_pos
   if verbose:
@@ -71,32 +77,81 @@ def collectData(order, data_dir, data_pre, data_pos,
     highSNR = getHighestSNR(flux,error)
     ref = flux[highSNR]
 
-    if oldAlign:
-      flux,error = alignData(flux,error,verbose=True)
-    else:
-      flux, error = alignment(flux, ref, iterations=alignmentIterations,
-        error = error, padLen = padLen, fft_n = fft_n,
-        peak_half_width = peak_half_width,
-        upSampleFactor = upSampleFactor, verbose = verbose)
+    flux, error = alignment(flux, ref, iterations=alignmentIterations,
+      error = error, padLen = padLen, fft_n = fft_n,
+      peak_half_width = peak_half_width,
+      upSampleFactor = upSampleFactor, verbose = verbose)
     
-
   template = getTemplate(templateFile, wave)
 
   return flux, error, wave, times, template
 
-def computeSysremIterations(order, orb_params, 
-                    data_dir, data_pre, data_pos,
-                    header_file, templateFile,
-                    signal_strength = 1/1000, 
-                    max_sysrem_its = 20,
-                    continuum_order = 4,
-                    mask_sigma = 2.5, mask_smooth = 40,
-                    smudge_mode = 1,
-                    vsys_range = None, kpRange = None, 
-                    verbose = False
+def prepareData(flux, verbose=False,
+              # Fake Signal Params:
+                wave = None, times = None, templateFile = None, 
+                orb_params = None, fake_signal_strength = 0, 
+              #Contunuum Params:
+                continuum_order = 4,
+              #Masking Params:
+                use_time_mask = True, time_mask_cutoffs = [3,0],
+                use_wave_mask = False, wave_mask_window = 100,
+                wave_mask_cutoffs = [3,0],
+                mask_smoothing_factor = 40,
+              #Sysrem Params:
+                sysremIterations = 0, error = None,
+                returnAllSysrem = False,
+              #Variance Weighting Params:
+                doVarianceWeight = True
 ):
-  # Collect Data
-  print('hi')
+  superVerbose = verbose>1
+
+  # Add fake signal to Flux
+  if fake_signal_strength != 0:
+    if verbose:
+      print('Injecting Fake Data')
+
+    flux = addTemplateToData(flux, wave, times,  orb_params,
+            templateFile, fake_signal_strength, verbose=superVerbose)
+
+  # Calculate Mask for flux (To be done before continuum subtracting)
+  if use_time_mask or use_wave_mask:
+    if verbose:
+      print("Creating Mask")
+
+    time_mask = np.ones(np.shape(flux)[1])
+    wave_mask = np.ones(np.shape(flux)[1])
+
+    if use_time_mask:
+      time_mask = getTimeMask(flux, *time_mask_cutoffs,
+          smoothingFactor=0)
+    
+    if use_wave_mask:
+      wave_mask = getWaveMask(flux, wave_mask_window, *wave_mask_cutoffs, smoothingFactor=0)
+
+    mask = combineMasks(time_mask, wave_mask, 
+        smoothingFactor=mask_smoothing_factor)
+
+  # Continuum Subtract Flux
+  if continuum_order != 0:
+    if verbose:
+      print("Subtracting Continuum")
+
+    flux = continuumSubtract(flux, continuum_order, verbose=superVerbose)
+
+  # Apply mask to flux
+  if use_time_mask or use_wave_mask:
+    flux = applyMask(flux, mask)
+
+  if sysremIterations != 0:
+    if verbose:
+      print('Doing Sysrem')
+    flux = sysrem(flux, error, sysremIterations, verbose=superVerbose,
+      retAll = returnAllSysrem)
+
+  if doVarianceWeight:
+    flux = varianceWeighting(flux)
+
+  return flux
 
 def pipeline(order, orb_params, 
              data_dir, data_pre, data_pos, 
@@ -162,9 +217,9 @@ def pipeline(order, orb_params,
              }
   sm,rx,ry = generateSmudgePlot(*std_args, **std_kws)
   return sm, rx, ry
+###
 
-# Misc
-# ######################################################
+#-- Misc
 def plotOrder(flux, wave, order=None, orderLabels=None):
   xlocs = [0, int(np.shape(flux)[1]/2), np.shape(flux)[1]-1]
   xlabs = wave[xlocs]
@@ -185,21 +240,17 @@ def plotOrder(flux, wave, order=None, orderLabels=None):
   plt.xticks(xlocs,xlabs)
 
   plt.show()
+###
 
-# Step 0: 
-# Raw Data 
-# ######################################################
+#-- Step 0: Raw Data 
 def collectRawData(dataFile):
   with open(dataFile,'rb') as f:
     data = pickle.load(f)
 
   return data
+###
 
-# ######################################################
-
-# Step 1: 
-# Delete bad data
-# ######################################################
+#-- Step 1: Delete bad data
 def getBounds(flux, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0.1):
   med_data = np.median(flux,0)
   filt = ndimage.gaussian_filter(med_data, sigma)
@@ -231,109 +282,24 @@ def trimData(flux, wave, error, sigma = 10, neighborhood_size=20, edge_discard=1
   bound_error = error[:,bounds[0]:bounds[1]]
 
   return bound_flux, bound_wave, bound_error
+###
 
-# ######################################################
-# Gives alignment fixes from crosscorrelations with highSNR spectrum
-# Shift value is center(highSNR) - center(this_spec)
-#  I.e. negative shift value indicates this spectra is moved right, needs to be moved left
-def findPixelShifts(flux, error, interpolation_half_width = 2, 
-                      peak_half_width = 0.9, 
-                      upSampleFactor = 5,
-                      verbose = False,
-                      xcorMode = 'same',
-                      doQuadFit = True,
-                      doZoom = False
-):
-  highSNR = getHighestSNR(flux, error)
-
-  ref_spec = flux[highSNR] - np.mean(flux[highSNR])
-  auto_cor = signal.correlate(ref_spec, ref_spec, xcorMode)
-  zero_point = np.argmax(auto_cor)
-
-  centers = []
-
-  seq = range(len(flux))
-  if verbose:
-    seq = tqdm(seq, desc="Finding Shifts")
-
-  for i in seq:
-    spec = flux[i]
-    xcor = signal.correlate(spec-np.mean(spec), ref_spec, xcorMode)
-    mid_point = np.argmax(xcor)
-
-    #upsample the Cross Correlation Peak
-    xcor_lb = mid_point - interpolation_half_width
-    xcor_rb = mid_point + interpolation_half_width + 1
-
-    peak_x = range(xcor_lb,xcor_rb)
-    peak   = xcor[xcor_lb:xcor_rb]
-
-    if doZoom:
-      upSamp= np.linspace(peak_x[0],peak_x[-1],len(peak_x)*upSampleFactor)
-      upSampPeak = ndimage.zoom(peak, upSampleFactor)
-    else:
-      upSamp, upSampPeak = upSampleData(peak_x, peak, upSampleFactor)
-
-    upSampPeakHW = int(peak_half_width * upSampleFactor)
-
-    if doQuadFit:
-      center = findCenterOfPeak(upSamp, upSampPeak, upSampPeakHW)
-    else:
-      center = upSamp[np.argmax(upSampPeak)]
-
-    centers.append(center)
-
-  return  zero_point - np.array(centers)
-
-def applyShifts(flux, error, shifts,
-                verbose = False
-):
-  seq = range(len(flux))
-  if verbose:
-    seq = tqdm(seq, desc='Aligning Spectra')
-
-  aligned_flux  = np.zeros(np.shape(flux))
-  aligned_error = np.zeros(np.shape(error))
-
-
-  for i in seq:
-    aligned_flux[i] = ndimage.shift(flux[i],shifts[i],mode='nearest')
-    aligned_error[i] = ndimage.shift(error[i],shifts[i],mode='nearest')
-  return aligned_flux, aligned_error
-
-def alignData(flux, error,
-                interpolation_half_width = 2, 
-                peak_half_width = 1.2, 
-                upSampleFactor = 2000,
-                verbose = False,
-                xcorMode = 'same'
-):
-  shifts = findPixelShifts(flux, error,
-            interpolation_half_width=interpolation_half_width,
-            peak_half_width=peak_half_width,
-            upSampleFactor=upSampleFactor,
-            verbose=verbose,
-            xcorMode=xcorMode)
-
-  aligned_flux, aligned_error = applyShifts(flux,error,shifts,verbose)
-  return aligned_flux, aligned_error
-
-# Step 2:
-# Align Data
-# ######################################################
+#-- Step 2: Align Data
 def getHighestSNR(flux, error):
   snrs = np.median(flux/error,1)
   return np.argmax(snrs)
 
-# Gives alignment fixes from crosscorrelations with highSNR spectrum
-# Shift value is center(highSNR) - center(this_spec)
-#  I.e. negative shift value indicates this spectra is moved right, needs to be moved left
 def calcCorrelationOffset(corr, auto_corr,
               peak_half_width = 3,
               upSampleFactor  = 1000, 
               fourier_domain = False,
               verbose = False
 ):
+  '''
+    Gives alignment fixes from crosscorrelations with highSNR spectrum
+    Shift value is center(highSNR) - center(this_spec)
+    I.e. negative shift value indicates this spectra is moved right, needs to be moved left
+  '''
   if fourier_domain:
     corr = ifftCorrelation(corr, len(auto_corr))
 
@@ -416,12 +382,9 @@ def alignment(flux, ref, iterations = 1,
     iterations = iterations-1, error = error,
     padLen = padLen, peak_half_width = peak_half_width,
     upSampleFactor = upSampleFactor, verbose = verbose)
+###
 
-# ######################################################
-
-# Step 3: 
-# Remove Coherent Structure
-# ######################################################
+#-- Step 3: Remove Coherent Structure
 def continuumSubtract(data, order, error=None, verbose=False):
   single_spec = (np.ndim(data) == 1)
 
@@ -521,7 +484,9 @@ def sysrem(data, error,
     return allResiduals[-1]
       
 def varianceWeighting(data):
-  return np.nan_to_num(data/np.var(data,0))
+  # For data.ndim = 2: gets column variance
+  # For data.ndim = 3: gets column variance of each image
+  return np.nan_to_num(data/np.var(data,-2, keepdims=1))
 
 def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
                 smoothingFactor = 20
@@ -558,6 +523,10 @@ def getWaveMask(flux, window_size=100, relativeCutoff = 3,
 
   return ndimage.minimum_filter(mask, smoothingFactor)
 
+def combineMasks(*masks, smoothingFactor=20):
+  mask = np.prod(masks,0)
+  return ndimage.minimum_filter(mask, smoothingFactor)
+
 def applyMask(data, mask):
   # Number of 'good' points remaining per row
   num_unmasked = np.sum(mask)
@@ -568,10 +537,9 @@ def applyMask(data, mask):
   y = data - new_mean
 
   return y*mask
+###
 
-# Step 4:
-# Compare To Template
-# ######################################################
+#-- Step 4: Compare To Template
 def generateXCorMatrix(data, wave, template, 
                         normalize=True,
                         xcorMode='same', verbose=False
@@ -742,10 +710,9 @@ def generateSmudgePlot(data, wave, times, template,
     return np.array(smudges), vsys, kpRange
   else:
     return np.array(smudges)
+###
 
-'''
-   Testing Functions
-'''
+#-- Template Functions
 def addTemplateToData(flux, wave, times, orb_params, 
                       templateFile, templateStrength,
                       verbose = False
@@ -788,17 +755,19 @@ def getTemplate(templateFile, wave):
   template_interp = getTemplateInterpolation(templateFile)
   template = interpolate.splev(wave, template_interp)
   return template
+###
+
 '''
    Generic Functions
 '''
-# Math
-# ######################################################
+#-- Math
 def snr(data):
   return np.mean(data)/np.std(data)
 
-# Wrapper for np.fft.rfft
-# Automatically pads to length base-2
 def rfft(a, pad=True, axis=-1, returnPadLen = False):
+  """ Wrapper for np.fft.rfft
+    Automatically pads to length base-2
+  """
   n = np.shape(a)[axis]
   power = int(np.ceil(np.log2(n)))
   if pad:
@@ -808,9 +777,11 @@ def rfft(a, pad=True, axis=-1, returnPadLen = False):
   else:
     return np.fft.rfft(a, axis=axis)
 
-# Correlation function with option to pass data already in the 
-# Fourier domain.
+
 def correlate(target, reference, fourier_domain = False):
+  """ Correlation function with option to pass data already in the 
+    Fourier domain.
+  """
   if not fourier_domain:
     n = len(reference)
     target = target - np.mean(target,1, keepdims=True)
@@ -826,10 +797,10 @@ def correlate(target, reference, fourier_domain = False):
 
   return fft_corr
   
-# Inverts the correlation matrix from correlate, 
-# Applies the transformation to correct for circular/non-circular
-# ffts
 def ifftCorrelation(fft_corr, n=None):
+  """ Inverts the correlation matrix from correlate, 
+    Applies the transformation to correct for circular/non-circular ffts
+  """
   corr = np.fft.irfft(fft_corr)  
   if n == None:
     m = np.shape(corr)[1]
@@ -843,8 +814,9 @@ def ifftCorrelation(fft_corr, n=None):
     m = int(n/2)
     return np.concatenate((corr[...,-m:] , corr[...,:m]), axis = -1)
 
-# Shifts data considering errors
 def shiftData(y, shift, error=None, ext=3):
+  """ Shifts data considering errors 
+  """
   x = np.arange(len(y))
 
   weights = None
@@ -856,9 +828,10 @@ def shiftData(y, shift, error=None, ext=3):
 
   return interpolated
 
-# Shifts data quickly,
-# Option to pass data already in fourier domain
 def fourierShift1D(y, shift, n=-1, fourier_domain=False):
+  """ Shifts data quickly,
+    Option to pass data already in fourier domain
+  """
   if not fourier_domain:
     m = len(y)
     y, n = rfft(y,returnPadLen=True)
@@ -918,10 +891,9 @@ def normalize(d, outRange=[0,1]):
 
 def percStd(data):
     return (np.percentile(data,84) - np.percentile(data,16))/2
-# ######################################################
+###
 
-# Physics
-# ######################################################
+#-- Physics
 def rv(t, t0, P, w, e, Kp, v_sys, vectorizeFSolve = False):
   # t     : Times of Observations
   # to    : Time of Periastron
@@ -975,5 +947,4 @@ def inverseDoppler(wave, wave_shift, source=False):
     z = wave_shift/ (waveCenter)
   A = (1+z)**2
   return (A-1)/(A+1) * constants.c
-
-
+###
