@@ -39,9 +39,9 @@ def collectData(order, data_dir, data_pre, data_pos,
                 discard_cols = [],
                 doAlign = True,
                 alignmentIterations = 1,
-                padLen = 50, fft_n = None,
-                peak_half_width = 3, upSampleFactor = 1000,
-                verbose = False
+                padLen = 50, peak_half_width = 3,
+                upSampleFactor = 1000,
+                verbose = False, **kwargs
 ):
   """ #Performs Steps 0-2 all at once
   """
@@ -74,19 +74,21 @@ def collectData(order, data_dir, data_pre, data_pos,
   flux, wave, error = trimData(flux, wave, error)
 
   if doAlign:
+    if verbose:
+      print('Aligning Data')
     highSNR = getHighestSNR(flux,error)
     ref = flux[highSNR]
 
     flux, error = alignment(flux, ref, iterations=alignmentIterations,
-      error = error, padLen = padLen, fft_n = fft_n,
+      error = error, padLen = padLen,
       peak_half_width = peak_half_width,
-      upSampleFactor = upSampleFactor, verbose = verbose)
+      upSampleFactor = upSampleFactor, verbose = verbose>1)
     
   template = getTemplate(templateFile, wave)
 
   return flux, error, wave, times, template
 
-def prepareData(flux, verbose=False,
+def prepareData(flux,
               # Fake Signal Params:
                 wave = None, times = None, templateFile = None, 
                 orb_params = None, fake_signal_strength = 0, 
@@ -101,7 +103,8 @@ def prepareData(flux, verbose=False,
                 sysremIterations = 0, error = None,
                 returnAllSysrem = False,
               #Variance Weighting Params:
-                doVarianceWeight = True
+                doVarianceWeight = True,
+                verbose=False, **kwargs
 ):
   superVerbose = verbose>1
 
@@ -152,6 +155,51 @@ def prepareData(flux, verbose=False,
     flux = varianceWeighting(flux)
 
   return flux
+
+def calcSysremIterations(order, data_dir, data_pre, data_pos,
+                        header_file, templateFile,
+                        verbose=False,
+                        fake_signal_strengths=[1/1000],
+                        maxIterations=10,
+                        **kwargs
+):
+  """ Computes detection strength vs number of sysrem iterations
+    Params: See collectData(), prepareData(), generateSmudgePlot()
+    for additional optional parameters
+  """
+
+  # Collect Data
+  flux, error, wave, times, template = collectData(order,
+              data_dir, data_pre, data_pos, header_file,
+              templateFile, verbose=verbose, **kwargs)
+
+  # Injected KpValue
+  kpRange = np.array([orb_params['Kp']])
+  all_detection_strengths = []
+
+  for signal_strength in fake_signal_strengths:
+    this_ds = []
+
+    # Calculate maxIterations sysrem iterations
+    sysremData = prepareData(flux, verbose=verbose,
+                    wave=wave, times=times,
+                    templateFile=templateFile, orb_params=orb_params,
+                    fake_signal_strength= signal_strength,
+                    sysremIterations=maxIterations, error=error,
+                    returnAllSysrem=True, **kwargs)
+
+    # Calculate the detection strength for each iteration
+    for residuals in sysremData:
+      sm, rx, ry = generateSmudgePlot(residuals, wave, times, template,
+                    kpRange, orb_params, retAxes=True, verbose=verbose, 
+                    **kwargs)
+      x_pos = np.argmin(np.abs(rx - orb_params['v_sys']))
+      detection_strength = sm[0,x_pos]
+      this_ds.append(detection_strength)
+
+    all_detection_strengths.append(np.array(this_ds))
+
+  return np.array(all_detection_strengths)
 
 def pipeline(order, orb_params, 
              data_dir, data_pre, data_pos, 
@@ -332,7 +380,7 @@ def calcCorrelationOffset(corr, auto_corr,
 
 def alignment(flux, ref, iterations = 1, 
              error=None, returnOffset = False,
-             padLen = 50, fft_n = None,
+             padLen = 50,
              peak_half_width = 3, upSampleFactor = 1000,
              verbose = False
 ):
@@ -356,11 +404,7 @@ def alignment(flux, ref, iterations = 1,
   ref_autoCorr = signal.correlate(ref, ref, 'same')
 
   fft_ref = rfft(ref)
-  fft_flux, found_fft_n = rfft(flux, returnPadLen=True)
-
-  if fft_n is None:
-    fft_n = found_fft_n
-
+  fft_flux, fft_n = rfft(flux, returnPadLen=True)
 
   fft_corr = correlate(fft_flux, fft_ref,fourier_domain=True)
   offsets = calcCorrelationOffset(fft_corr, ref_autoCorr,
