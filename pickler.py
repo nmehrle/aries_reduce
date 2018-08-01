@@ -17,8 +17,9 @@ if verbose:
 # Computer can only handle so many open files at a time
 maxChunkSize = 123
 suffix    = 'int.fits'
-data     = '2016oct16' #Ups And
-_proc    = str(Path.home()) + "/documents/science/spectroscopy/" + data +"/proc/"
+data     = '2016oct20b' #wasp33
+_proc    = '/dash/exobox/proj/pcsa/data/proc/' + data + '/'
+
 spectarg = _proc+'spectarg'
 
 list_spectarg = np.loadtxt(spectarg,str)
@@ -64,7 +65,7 @@ for i, subset_range in enumerate(subset_ranges):
     del hdu.data
     del hdu
     del hdul
-  
+
   fluxes.append(np.copy(fluxSubset))
   errors.append(np.copy(errorSubset))
 
@@ -85,7 +86,7 @@ for order in range(len(fluxes)):
     'fluxes': np.array(fluxes[order]),
     'errors': np.array(errors[order]),
     'waves' : np.array(waves[order])
-  } 
+  }
 
   saveName = _proc+'order_'+str(order)+'.pickle'
 

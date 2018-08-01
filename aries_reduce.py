@@ -84,9 +84,9 @@ from functools import partial
 ################################################################
 
 data = '2016oct15' # GX And
-data = '2016oct15b' # WASP-33
+# data = '2016oct15b' # WASP-33
 # data = '2016oct19' # WASP-33
-# data = '2016oct20b' # WASP-33
+data = '2016oct20b' # WASP-33
 # data = '2016oct16' #Ups And
 
 # Optional change in directory structure for Exobox
@@ -98,19 +98,19 @@ makeFlat    = False
 makeMask    = False
 
 # Calibration Frames
-preProcCal  = True
+preProcCal  = False
 processCal  = False
+
+# Extract calibration frame aperatures for processCal
 calApp      = False
 
 # Target Frames
 preProcTarg = False
-processTarg = False
+processTarg = True
 
 # find target aperatures from full data list.
-
-
 # Should only need to be run once for each dataset
-idTargAperatures = False
+idTargAperatures = True
 
 # SaveAsPickleFiles
 # Recommended to use the python 3 routine pickler.py
@@ -118,11 +118,11 @@ pickleFiles = False
 
 # WhatToSave
 # For PreprocessTarg
-saveBadMask        = False
+saveBadMask        = True
 
 # For ProcessTarg
-saveCorrectedImg   = False #(Output of Preprocess)
-saveUnInterpolated = False
+saveCorrectedImg   = True #(Output of Preprocess)
+saveUnInterpolated = True
 
 
 # Telluric Correction
@@ -171,6 +171,7 @@ else:
     _proc = "/dash/exobox/proj/pcsa/data/proc/" + data + "/"
     _corquad = "/dash/exobox/code/python/nmehrle/corquad/corquad.e"
     _iraf = "/dash/exobox/code/python/nmehrle/iraf"
+    telluric_list = '/dash/exobox/code/python/nmehrle/telluric_lines/hk_band_lines.dat'
 
 
 ################################################################
@@ -557,8 +558,8 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     #apply correction to each dc flat
     #if flats come as a dict, don't correct the overall (no angle dependence) flat
     if flats_as_dict:
-        for angle,dc_flat in _sflatdc_dict.items():
-            correctblazefn(dc_flat, _sflatdcn_dict[angle])
+        for angle in sorted(_sflatdc_dict.iterkeys()):
+            correctblazefn(_sflatdc_dict[angle], _sflatdcn_dict[angle])
     else:
         correctblazefn(_sflatdc, _sflatdcn)
 
@@ -644,7 +645,6 @@ if preProcData:
     if preProcCal:
         # Add 'exptime' header to all cal, target, and lamp files:
         ns.write_exptime(rawcal, itime=itime)
-
         # Correct for bad pixels and normalize all the frames by the flat field
         # will edit for multiple flats
         ir.load('crutil')
