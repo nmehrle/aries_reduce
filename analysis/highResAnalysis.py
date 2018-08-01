@@ -1,5 +1,5 @@
 import numpy as np
-import pickle
+import pickle, json
 from scipy import ndimage, interpolate, optimize
 from scipy import constants, signal, stats
 from astropy.io import fits
@@ -22,7 +22,7 @@ else:
 
 # Sections:
   # Composite Functions - Wraps everything Together
-  # Misc - Plotting
+  # Plotting Functions
   # Step 0: Raw Data
   # Step 1: Removing Bad Data
   # Step 2: Aligns Data
@@ -38,7 +38,7 @@ def collectData(order, data_dir, data_pre, data_pos,
                 discard_rows = [],
                 discard_cols = [],
                 doAlign = True,
-                alignmentIterations = 1,
+                alignmentIterations = 3,
                 padLen = 50, peak_half_width = 3,
                 upSampleFactor = 1000,
                 verbose = False, **kwargs
@@ -152,16 +152,17 @@ def prepareData(flux,
       retAll = returnAllSysrem)
 
   if doVarianceWeight:
+    if verbose:
+      print('Variance Weighting Columns')
     flux = varianceWeighting(flux)
 
   return flux
 
 def calcSysremIterations(order, data_dir, data_pre, data_pos,
-                        header_file, templateFile,
-                        verbose=False,
+                        header_file, templateFile, orb_params,
                         fake_signal_strengths=[1/1000],
                         maxIterations=10,
-                        **kwargs
+                        verbose=False, **kwargs
 ):
   """ Computes detection strength vs number of sysrem iterations
     Params: See collectData(), prepareData(), generateSmudgePlot()
@@ -178,103 +179,77 @@ def calcSysremIterations(order, data_dir, data_pre, data_pos,
   all_detection_strengths = []
 
   for signal_strength in fake_signal_strengths:
+    if verbose:
+      print('-----------------------------')
+      print('Working on signal: '+str(signal_strength))
+      print('-----------------------------')
     this_ds = []
 
     # Calculate maxIterations sysrem iterations
-    sysremData = prepareData(flux, verbose=verbose,
+    sysremData = prepareData(flux,
                     wave=wave, times=times,
                     templateFile=templateFile, orb_params=orb_params,
                     fake_signal_strength= signal_strength,
                     sysremIterations=maxIterations, error=error,
-                    returnAllSysrem=True, **kwargs)
+                    returnAllSysrem=True, verbose=verbose, **kwargs)
 
+    if verbose:
+        print('Calculating Detection Strengths')
     # Calculate the detection strength for each iteration
     for residuals in sysremData:
-      sm, rx, ry = generateSmudgePlot(residuals, wave, times, template,
-                    kpRange, orb_params, retAxes=True, verbose=verbose, 
-                    **kwargs)
-      x_pos = np.argmin(np.abs(rx - orb_params['v_sys']))
-      detection_strength = sm[0,x_pos]
+      smudges, vsys_axis, kp_axis = generateSmudgePlot(residuals, wave,
+                                      times, template, kpRange,
+                                      orb_params, retAxes=True,
+                                      verbose=(verbose>1)*2,
+                                      **kwargs)
+
+      x_pos = np.argmin(np.abs(vsys_axis - orb_params['v_sys']))
+      detection_strength = smudges[0,x_pos]
       this_ds.append(detection_strength)
 
     all_detection_strengths.append(np.array(this_ds))
 
+  if verbose:
+    print('Done!')
   return np.array(all_detection_strengths)
 
-def pipeline(order, orb_params, 
-             data_dir, data_pre, data_pos, 
-             header_file,
-             templateFile, 
-             signal_strength=1/1000,
-             sysrem_its = 3, mask_sigma = 2,
-             mask_smoothing_factor = 25,
-             continuum_order=4, smudge_mode = 1,
-             vsys_range = [-100*1000,100*1000],
-             kpRange = np.arange(20,90,1)*1000,
-             stdDivide = True,
-             verbose=False
+def pipeline(order, data_dir, data_pre, data_pos,
+             header_file, templateFile, orb_params,
+             kpRange, verbose=False, **kwargs
 ):
-  dataFileName = data_dir+data_pre+str(order)+data_pos
+  """ Completely generates a smudge plot for the given order, data
+    See collectData(), prepareData(), generateSmudgePlot() for 
+    optional parameter inputs
+  """
+
+  # Collect Raw Data
+  flux, error, wave, times, template = collectData(order,
+              data_dir, data_pre, data_pos, header_file,
+              templateFile, verbose=verbose, **kwargs)
+
+  data = prepareData(flux, wave=wave, times=times,
+          templateFile=templateFile, orb_params=orb_params,
+          error=error, verbose=verbose,
+          **kwargs)
+
+  smudges, vsys_axis, kp_axis = generateSmudgePlot(data, wave, times,
+                                  template, kpRange, orb_params,
+                                  verbose=verbose, retAxes=True,
+                                  **kwargs)
+
   if verbose:
-    print('Collecting Data')
-  data = collectRawData(dataFileName)
-  flux = data['fluxes']
-  wave = data['waves']
-  error = data['errors']
-  del data
-
-  headers = collectRawData(data_dir + header_file)
-  times = np.array(headers['JD'])
-  del headers
-
-  # Discard Bad Data
-  # Last Frame looks bad
-  flux = flux[:-1,:]
-  error = error[:-1,:]
-  times = times[:-1]
-
-  # Trim off ends
-  flux, wave, error = trimData(flux, wave, error)
-
-  flux, error = alignData(flux, error, wave, verbose = verbose)
-
-  template = getTemplate(templateFile, wave)
-
-  fake_signal = addTemplateToData(flux, wave, times,
-                                orb_params, templateFile,
-                                signal_strength, 
-                                verbose= verbose)
-
-  cs = continuumSubtract(fake_signal, continuum_order, verbose=True)
-
-  mask = getTimeMask(cs, mask_sigma, smoothingFactor=mask_smoothing_factor)
-  masked = applyMask(fake_signal, mask)
-
-  sd = sysrem(masked, error, sysrem_its, verbose=verbose, retAll=False) 
-
-  data = varianceWeighting(sd)
-
-  std_args = [data, wave, times, template, kpRange, orb_params]
-  std_kws  = {'normalizeXCors' : True,
-              'verbose': verbose,
-              'vsys_range': vsys_range,
-              'retAxes':True,
-              'mode': smudge_mode,
-              'ext': 1,
-              'stdDivide': stdDivide
-             }
-  sm,rx,ry = generateSmudgePlot(*std_args, **std_kws)
-  return sm, rx, ry
+    print('Done!')
+  return smudges, vsys_axis, kp_axis 
 ###
 
-#-- Misc
-def plotOrder(flux, wave, order=None, orderLabels=None):
+#-- Plotting Functions
+def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
   xlocs = [0, int(np.shape(flux)[1]/2), np.shape(flux)[1]-1]
   xlabs = wave[xlocs]
   xlabs = ['%.3f' % (np.round(x,3)) for x in xlabs]
 
   plt.figure()
-  plt.imshow(flux,aspect='auto')
+  plt.imshow(flux,aspect='auto',cmap=cmap)
   plt.ylabel('Frame')
   plt.xlabel('Wavelength')
   if order == None:
@@ -288,6 +263,63 @@ def plotOrder(flux, wave, order=None, orderLabels=None):
   plt.xticks(xlocs,xlabs)
 
   plt.show()
+
+def plotSmudge(smudges, vsys_axis, kp_axis,
+              orb_params=None, titleStr="",
+              xlim=None, ylim=None
+):
+  """ Plots a smudge Plot
+  """
+
+  # Use units: km/s
+  xs = vsys_axis/1000
+  ys = kp_axis/1000
+
+  # Offset xs,ys by 1/2 spacing for pcolormesh
+  pltXs = xs+getSpacing(xs)/2
+  pltYs = ys+getSpacing(ys)/2
+
+  # Get Max of SmudgePlot
+  ptmax = np.unravel_index(smudges.argmax(), smudges.shape)
+  ptx = xs[ptmax[1]]
+  pty = ys[ptmax[0]]
+
+  plt.figure()
+  # Plot smudges
+  plt.pcolormesh(pltxs,pltys,smudges)
+  # Plot Peak
+  plt.scatter(ptx,pty, color='k')
+
+  # Plot 'true' values if they exist
+  true_val_str = ""
+  if orb_params is not None:
+    trueKp   = orb_params['Kp']/1000
+    trueVsys = orb_params['v_sys']/1000
+    plt.plot((trueVsys,trueVsys),(pltys[0],pltys[-1]),'r')
+    plt.plot((pltxs[0],pltxs[-1]),(trueKp,trueKp),'r')
+
+    markYval = np.argmin(np.abs(ys - trueKp))
+    markXval = np.argmin(np.abs(xs - trueVsys))
+
+    true_val_str = "\nValue under cross: " + str(np.round(smudges[MarkYval,MarkXval],2))
+
+  plt.ylabel("Kp (km/s)")
+  plt.xlabel("V_sys (km/s)")
+
+  if titleStr!="":
+    titleStr += '\n'
+  plt.title(titleStr+'Max Value: '+ 
+      str(np.round(smudges[ptmax],2)) + true_val_str)
+
+  cbar = plt.colorbar()
+  cbar.set_label('Sigma')
+
+  if xlim is not None:
+    plt.xlim(*xlim)
+  if ylim is not None:
+    plt.ylim(*ylim)
+
+  plt.show()
 ###
 
 #-- Step 0: Raw Data 
@@ -296,6 +328,24 @@ def collectRawData(dataFile):
     data = pickle.load(f)
 
   return data
+
+def readOrbParams(planet, orbParamsDir='./', 
+                  orbParamsFile='orb_params.json'
+):
+  """ Reads In orbital parameters from the database
+  """
+  fileStr = orbParamsDir + orbParamsFile
+  with open(fileStr) as f:
+    data = json.load(f)
+
+  try:
+    return data[planet]
+  except KeyError:
+    print('Planet "'+str(planet)+'" not found')
+    print('Valid Planets Are: ')
+    print(list(data.keys()))
+    raise
+
 ###
 
 #-- Step 1: Delete bad data
@@ -642,9 +692,12 @@ def initializeSmudgePlot(data, wave, times, template,
                         xcorMode = 'same',
                         verbose = False
 ):
+  if verbose:
+    print('Generating Cross Correlations')
   # xcor Interps
-  xcm = generateXCorMatrix(data, wave, template, normalize=normalizeXCors,
-                            xcorMode=xcorMode, verbose=verbose)
+  xcm = generateXCorMatrix(data, wave, template, 
+                          normalize=normalizeXCors, xcorMode=xcorMode,
+                          verbose=(verbose>1))
   vsys = getXcorVelocities(wave, xcorMode)
 
   xcor_interps = []
@@ -673,10 +726,11 @@ def generateSmudgePlot(data, wave, times, template,
                         normalizeXCors = True,
                         xcorMode = 'same',
                         verbose = False,
-                        retAxes = False,
+                        retAxes = True,
                         ext = 3,
                         mode=1,
-                        stdDivide = True
+                        stdDivide = True,
+                        **kwargs
 ):
   if verbose:
     print('Initializing')
@@ -686,10 +740,11 @@ def generateSmudgePlot(data, wave, times, template,
                                  vsys_range=vsys_range, normalizeXCors=normalizeXCors,
                                  xcorMode=xcorMode, verbose=verbose)
 
-
+  if verbose:
+    print('Considering Kps')
   #Setting up verbose iterator
   seq = range(len(kpRange))
-  if verbose:
+  if (verbose>1):
     seq = tqdm(seq, desc='Considering Kps')
 
   # Calculate Smudges
