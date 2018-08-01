@@ -286,7 +286,9 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
 
   plt.figure()
   # Plot smudges
-  plt.pcolormesh(pltxs,pltys,smudges)
+  plt.pcolormesh(pltXs,pltYs,smudges)
+  cbar = plt.colorbar()
+
   # Plot Peak
   plt.scatter(ptx,pty, color='k')
 
@@ -295,13 +297,13 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   if orb_params is not None:
     trueKp   = orb_params['Kp']/1000
     trueVsys = orb_params['v_sys']/1000
-    plt.plot((trueVsys,trueVsys),(pltys[0],pltys[-1]),'r')
-    plt.plot((pltxs[0],pltxs[-1]),(trueKp,trueKp),'r')
+    plt.plot((trueVsys,trueVsys),(pltYs[0],pltYs[-1]),'r')
+    plt.plot((pltXs[0],pltXs[-1]),(trueKp,trueKp),'r')
 
     markYval = np.argmin(np.abs(ys - trueKp))
     markXval = np.argmin(np.abs(xs - trueVsys))
 
-    true_val_str = "\nValue under cross: " + str(np.round(smudges[MarkYval,MarkXval],2))
+    true_val_str = "\nValue under cross: " + str(np.round(smudges[markYval,markXval],2))
 
   plt.ylabel("Kp (km/s)")
   plt.xlabel("V_sys (km/s)")
@@ -311,7 +313,6 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   plt.title(titleStr+'Max Value: '+ 
       str(np.round(smudges[ptmax],2)) + true_val_str)
 
-  cbar = plt.colorbar()
   cbar.set_label('Sigma')
 
   if xlim is not None:
