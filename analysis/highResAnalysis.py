@@ -266,7 +266,7 @@ def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
 
 def plotSmudge(smudges, vsys_axis, kp_axis,
               orb_params=None, titleStr="",
-              xlim=None, ylim=None
+              xlim=None, ylim=None, cmap='viridis'
 ):
   """ Plots a smudge Plot
   """
@@ -286,7 +286,7 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
 
   plt.figure()
   # Plot smudges
-  plt.pcolormesh(pltXs,pltYs,smudges)
+  plt.pcolormesh(pltXs,pltYs,smudges,cmap=cmap)
   cbar = plt.colorbar()
 
   # Plot Peak
