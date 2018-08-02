@@ -64,6 +64,8 @@ def collectData(order, data_dir, data_pre, data_pos,
 
   headers = collectRawData(data_dir + header_file)
   times = np.array(headers['JD'])
+  ras   = np.array(headers['RA'])
+  decs  = np.array(headers['DEC'])
   del headers
 
   # Discard Bad data
@@ -108,7 +110,7 @@ def collectData(order, data_dir, data_pre, data_pos,
 
   if verbose:
     print('Done')
-  return flux, error, wave, times, template
+  return flux, error, wave, template, times, ras, decs
 
 def prepareData(flux,
               # Fake Signal Params:
@@ -206,7 +208,7 @@ def calcSysremIterations(order, data_dir, data_pre, data_pos,
   """
 
   # Collect Data
-  flux, error, wave, times, template = collectData(order,
+  flux, error, wave, template, times, ras, decs = collectData(order,
               data_dir, data_pre, data_pos, header_file,
               templateFile, verbose=verbose, **kwargs)
 
@@ -259,7 +261,7 @@ def pipeline(order, data_dir, data_pre, data_pos,
   """
 
   # Collect Raw Data
-  flux, error, wave, times, template = collectData(order,
+  flux, error, wave, template, times, ras, decs = collectData(order,
               data_dir, data_pre, data_pos, header_file,
               templateFile, verbose=verbose, **kwargs)
 
@@ -1100,19 +1102,25 @@ def percStd(data):
 ###
 
 #-- Physics
-def rv(t, t0, P, w_deg, e, Kp, v_sys, vectorizeFSolve = False, **kwargs):
-  # t     : Times of Observations
-  # to    : Time of Periastron
-  # P     : Orbital Period
+def rv(t, t0, P, w_deg, e, Kp, v_sys, vectorizeFSolve = False,
+        doBarycentricCorrect=False, ra=None, dec=None,
+        raunits='hours', obsname=None,**kwargs
+):
+  """
+  Computes RV from given model, barycentric velocity
+
+  :param t     : Times of Observations
+  :param to    : Time of Periastron
+  :param P     : Orbital Period
       # t, t0, P must be same units
-  # w_deg : Argument of periastron
+  :param w_deg : Argument of periastron
       # degrees
-  # Kp     : Planets Orbital Velocity
-  # v_sys : Velocity of System
+  :param Kp     : Planets Orbital Velocity
+  :param v_sys : Velocity of System
       # K, v_sys must be same unit
       # Output will be in this unit
-  # NEEDS BARYCENTRIC VELOCITY
-
+  :return: radial velocity
+  """
   w = np.deg2rad(w_deg)
   mean_anomaly = ((2*np.pi)/P * (t - t0)) % (2*np.pi)
 
@@ -1133,6 +1141,12 @@ def rv(t, t0, P, w_deg, e, Kp, v_sys, vectorizeFSolve = False, **kwargs):
   true_anomaly = np.arctan2(np.sqrt(1-e**2) * np.sin(E), np.cos(E)-e)
 
   velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w)) + v_sys
+
+  if doBarycentricCorrect:
+    bc = barycorr.bvc(t, ra=ra, dec=dec,
+        obsname=obsname, raunits=raunits)
+    velocity = velocity + bc
+
   return velocity
 
 def doppler(wave,v, source=False):
