@@ -35,12 +35,16 @@ else:
 #-- Composite Functions
 def collectData(order, data_dir, data_pre, data_pos,
                 header_file, templateFile,
+                #Bad Data Kws
                 discard_rows = [],
                 discard_cols = [],
+                trim_sigma = 10, trim_neighborhood_size = 20,
+                trim_edge_discard = 10, trim_zeroTol = 0.1,
                 doAlign = True,
                 alignmentIterations = 3,
                 padLen = 50, peak_half_width = 3,
                 upSampleFactor = 1000,
+                plotSNRS = False, plotBounds = False,
                 verbose = False, **kwargs
 ):
   """ #Performs Steps 0-2 all at once
@@ -60,18 +64,31 @@ def collectData(order, data_dir, data_pre, data_pos,
   del headers
 
   # Discard Bad data
-  for row in discard_rows:
+  for row in discard_rows[::-1]:
     flux  = np.delete(flux, row, 0)
     error = np.delete(error, row, 0)
     times = np.delete(times, row)
 
-  for col in discard_cols:
+  for col in discard_cols[::-1]:
     flux  = np.delete(flux, col ,1)
     error = np.delete(error, col, 1)
     wave  = np.delete(wave, col)
 
+  if plotSNRS:
+    plt.figure()
+    plt.subplot(211)
+    plt.title('Row wise SNR (mean/std) \n After hard cuts, before bounds')
+    plt.plot(np.apply_along_axis(snr,1,flux))
+    plt.subplot(212)
+    plt.title('Column wise SNR (mean/std) \n After hard cuts, before bounds')
+    plt.plot(np.apply_along_axis(snr,0,flux))
+    plt.show()
+
   # Trim off ends
-  flux, wave, error = trimData(flux, wave, error)
+  flux, wave, error = trimData(flux, wave, error, sigma = trim_sigma,
+                        neighborhood_size=trim_neighborhood_size,
+                        edge_discard=trim_edge_discard,
+                        zeroTol=trim_zeroTol, plotBounds=plotBounds)
 
   if doAlign:
     if verbose:
@@ -86,6 +103,8 @@ def collectData(order, data_dir, data_pre, data_pos,
     
   template = getTemplate(templateFile, wave)
 
+  if verbose:
+    print('Done')
   return flux, error, wave, times, template
 
 def prepareData(flux,
@@ -104,6 +123,10 @@ def prepareData(flux,
                 returnAllSysrem = False,
               #Variance Weighting Params:
                 doVarianceWeight = True,
+              #Plotting Options:
+                plotTimeMaskWeights = False, plotTimeMask = False,
+                plotWaveMaskWeights = False, plotWaveMask = False,
+                plotMask = False,
                 verbose=False, **kwargs
 ):
   superVerbose = verbose>1
@@ -126,13 +149,23 @@ def prepareData(flux,
 
     if use_time_mask:
       time_mask = getTimeMask(flux, *time_mask_cutoffs,
-          smoothingFactor=0)
+          smoothingFactor=0, plotWeights = plotTimeMaskWeights,
+          plotMask = plotTimeMask)
     
     if use_wave_mask:
-      wave_mask = getWaveMask(flux, wave_mask_window, *wave_mask_cutoffs, smoothingFactor=0)
+      wave_mask = getWaveMask(flux, wave_mask_window, *wave_mask_cutoffs, smoothingFactor=0, plotWeights = plotWaveMaskWeights,
+          plotMask = plotWaveMask)
 
     mask = combineMasks(time_mask, wave_mask, 
         smoothingFactor=mask_smoothing_factor)
+
+    if plotMask:
+      plt.figure()
+      plt.title('Full Mask')
+      plt.plot(normalize(np.median(flux,0)))
+      plt.plot(mask)
+      plt.ylim(-0.2,1.2)
+      plt.show()
 
   # Continuum Subtract Flux
   if continuum_order != 0:
@@ -266,7 +299,7 @@ def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
 
 def plotSmudge(smudges, vsys_axis, kp_axis,
               orb_params=None, titleStr="",
-              xlim=None, ylim=None, cmap='viridis'
+              xlim=None, ylim=None, cmap='viridis',
 ):
   """ Plots a smudge Plot
   """
@@ -311,7 +344,8 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   if titleStr!="":
     titleStr += '\n'
   plt.title(titleStr+'Max Value: '+ 
-      str(np.round(smudges[ptmax],2)) + true_val_str)
+      str(np.round(smudges[ptmax],2)) + ': (' + str(np.round(ptx,1)) + ',' + str(int(np.round(pty,0))) + ')' +
+      true_val_str)
 
   cbar.set_label('Sigma')
 
@@ -320,6 +354,7 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   if ylim is not None:
     plt.ylim(*ylim)
 
+  plt.tight_layout()
   plt.show()
 ###
 
@@ -373,8 +408,22 @@ def getBounds(flux, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0
 
   return [first_minima,last_maxima]
 
-def trimData(flux, wave, error, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0.1):
+def getSNRBounds(flux, relativeCutoff=3, absoluteCutoff=0):
+  weights = 1
+
+
+def trimData(flux, wave, error, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0.1, plotBounds = False):
   bounds = getBounds(flux, sigma=sigma, neighborhood_size=neighborhood_size, edge_discard=edge_discard, zeroTol=zeroTol)
+  
+  if plotBounds:
+    plt.figure()
+    plt.title('Bounds for triming: \nLeft: '
+        +str(bounds[0])+', Right: '+str(bounds[1]))
+    plt.plot(normalize(np.median(flux,0)))
+    plt.plot((bounds[0],bounds[0]),(0,1))
+    plt.plot((bounds[1],bounds[1]),(0,1))
+    plt.ylim(-0.1,1.1)
+    plt.show()
 
   bound_flux = flux[:,bounds[0]:bounds[1]]
   bound_wave = wave[bounds[0]:bounds[1]]
@@ -584,26 +633,53 @@ def varianceWeighting(data):
   return np.nan_to_num(data/np.var(data,-2, keepdims=1))
 
 def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
-                smoothingFactor = 20
+                smoothingFactor = 20,
+                plotWeights = False, plotMask = False
 ):
-  weights  = np.apply_along_axis(snr, 0, flux)
+  weights  = np.nan_to_num(np.apply_along_axis(snr, 0, flux))
+
   if np.any(weights < 0):
     print('Warning, some weights (SNRs) are less than zero, consider using non zero-mean values for generating mask')
-    absoluteCutoff = -np.inf
 
   weightMean = np.mean(weights)
   weightStd  = np.std(weights)
+
+  if plotWeights:
+    plt.figure()
+    plt.title('Column wise SNRs')
+    plt.plot(weights)
+    n = len(weights)
+    colors = ['C1','C2','C3','C4']
+    labels = ['Mean','1 sigma','2 sigma','3 sigma']
+    for i in range(-3,4):
+      ls = '-'
+      lab = labels[np.abs(i)]
+      if i < 0:
+        lab = ""
+      plt.plot((0,n),(weightMean+i*weightStd,weightMean+i*weightStd),
+        label=lab, linestyle=ls, color=colors[np.abs(i)])
+    plt.legend(frameon=True,loc='best')
+    plt.show()
 
   lowerMask = weights < weightMean - relativeCutoff*weightStd
   absoluteMask = weights < absoluteCutoff
 
   mask = 1-np.logical_or(lowerMask,absoluteMask)
+  mask = ndimage.minimum_filter(mask, smoothingFactor)
 
+  if plotMask:
+    plt.figure()
+    plt.title('Time Mask')
+    plt.plot(normalize(np.median(flux,0)))
+    plt.plot(mask)
+    plt.ylim(-0.2,1.2)
+    plt.show()
 
-  return ndimage.minimum_filter(mask, smoothingFactor)
+  return mask
 
 def getWaveMask(flux, window_size=100, relativeCutoff = 3,
-                  absoluteCutoff = 0, smoothingFactor = 20
+                  absoluteCutoff = 0, smoothingFactor = 20,
+                  plotWeights=False, plotMask=False
 ):
   medSpec = np.median(flux,0)
   weights = ndimage.generic_filter(medSpec, snr, size=window_size)
@@ -611,12 +687,38 @@ def getWaveMask(flux, window_size=100, relativeCutoff = 3,
   weightMean = np.mean(weights)
   weightStd  = np.std(weights)
 
+  if plotWeights:
+    plt.figure()
+    plt.title('Windowed SNR along row')
+    plt.plot(weights)
+    n = len(weights)
+    colors = ['C1','C2','C3','C4']
+    labels = ['Mean','1 sigma','2 sigma','3 sigma']
+    for i in range(-3,4):
+      ls = '-'
+      lab = labels[np.abs(i)]
+      if i < 0:
+        lab = ""
+      plt.plot((0,n),(weightMean+i*weightStd,weightMean+i*weightStd),
+        label=lab, linestyle=ls, color=colors[np.abs(i)])
+    plt.legend(frameon=True)
+    plt.show()
+
   lowerMask = weights < weightMean - relativeCutoff*weightStd
   absoluteMask = weights < absoluteCutoff
 
   mask = 1-np.logical_or(lowerMask,absoluteMask)
+  mask = ndimage.minimum_filter(mask, smoothingFactor)
 
-  return ndimage.minimum_filter(mask, smoothingFactor)
+  if plotMask:
+    plt.figure()
+    plt.title('Wave Mask')
+    plt.plot(normalize(np.median(flux,0)))
+    plt.plot(mask)
+    plt.ylim(-0.2,1.2)
+    plt.show()
+
+  return mask
 
 def combineMasks(*masks, smoothingFactor=20):
   mask = np.prod(masks,0)
@@ -717,6 +819,7 @@ def initializeSmudgePlot(data, wave, times, template,
     min_vels = vsys + np.min((np.min(allRVs),0))
     max_vels = vsys + np.max((np.max(allRVs),0))
     goodCols = np.logical_and(max_vels >= vsys_range[0], min_vels  <= vsys_range[1])
+    # print(min_vels,max_vels)
     vsys = vsys[goodCols]
 
   return xcor_interps, unitRVs, vsys
@@ -994,19 +1097,20 @@ def percStd(data):
 ###
 
 #-- Physics
-def rv(t, t0, P, w, e, Kp, v_sys, vectorizeFSolve = False):
+def rv(t, t0, P, w_deg, e, Kp, v_sys, vectorizeFSolve = False, **kwargs):
   # t     : Times of Observations
   # to    : Time of Periastron
   # P     : Orbital Period
       # t, t0, P must be same units
-  # w     : Argument of periastron
-      # Radians
+  # w_deg : Argument of periastron
+      # degrees
   # Kp     : Planets Orbital Velocity
   # v_sys : Velocity of System
       # K, v_sys must be same unit
       # Output will be in this unit
   # NEEDS BARYCENTRIC VELOCITY
 
+  w = np.deg2rad(w_deg)
   mean_anomaly = ((2*np.pi)/P * (t - t0)) % (2*np.pi)
 
   if not vectorizeFSolve:
