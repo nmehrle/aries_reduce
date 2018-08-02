@@ -4,6 +4,9 @@ from scipy import ndimage, interpolate, optimize
 from scipy import constants, signal, stats
 from astropy.io import fits
 import matplotlib.pyplot as plt
+import sys
+sys.path.append('..')
+from barycorr import barycorr
 
 def type_of_script():
     try:

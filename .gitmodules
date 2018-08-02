@@ -1,3 +1,6 @@
 [submodule "barycorr"]
 	path = barycorr
 	url = https://github.com/tronsgaard/barycorr.git
+[submodule "barycorrpy"]
+	path = barycorrpy
+	url = https://github.com/shbhuk/barycorrpy
