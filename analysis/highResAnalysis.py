@@ -48,7 +48,8 @@ def collectData(order, data_dir, data_pre, data_pos,
                 padLen = 50, peak_half_width = 3,
                 upSampleFactor = 1000,
                 plotSNRS = False, plotBounds = False,
-                verbose = False, **kwargs
+                obsname = None, raunits = None,
+                verbose = False,  **kwargs
 ):
   """ #Performs Steps 0-2 all at once
   """
@@ -69,24 +70,39 @@ def collectData(order, data_dir, data_pre, data_pos,
   del headers
 
   # Discard Bad data
+  discard_rows.sort()
   for row in discard_rows[::-1]:
     flux  = np.delete(flux, row, 0)
     error = np.delete(error, row, 0)
     times = np.delete(times, row)
+    ras   = np.delete(ras, row)
+    decs  = np.delete(decs, row)
 
+  discard_cols.sort()
   for col in discard_cols[::-1]:
     flux  = np.delete(flux, col ,1)
     error = np.delete(error, col, 1)
     wave  = np.delete(wave, col)
 
+  rv_params = {
+    'doBarycentricCorrect':True,
+    'ra'      : ras,
+    'dec'     : decs,
+    'times'   : times,
+    'raunits' : raunits,
+    'obsname' : obsname
+  }  
+
   if plotSNRS:
     plt.figure()
+    plt.suptitle("Order: "+str(order), size=16)
     plt.subplot(211)
     plt.title('Row wise SNR (mean/std) \n After hard cuts, before bounds')
     plt.plot(np.apply_along_axis(snr,1,flux))
     plt.subplot(212)
     plt.title('Column wise SNR (mean/std) \n After hard cuts, before bounds')
     plt.plot(np.apply_along_axis(snr,0,flux))
+    plt.tight_layout()
     plt.show()
 
   # Trim off ends
@@ -110,11 +126,11 @@ def collectData(order, data_dir, data_pre, data_pos,
 
   if verbose:
     print('Done')
-  return flux, error, wave, template, times, ras, decs
+  return flux, error, wave, template, rv_params
 
 def prepareData(flux,
               # Fake Signal Params:
-                wave = None, times = None, templateFile = None, 
+                wave = None, rv_params = None, templateFile = None, 
                 orb_params = None, fake_signal_strength = 0, 
               #Contunuum Params:
                 continuum_order = 4,
@@ -129,8 +145,7 @@ def prepareData(flux,
               #Variance Weighting Params:
                 doVarianceWeight = True,
               #Plotting Options:
-                plotTimeMaskWeights = False, plotTimeMask = False,
-                plotWaveMaskWeights = False, plotWaveMask = False,
+                plotTimeMask = False, plotWaveMask = False,
                 plotMask = False,
                 verbose=False, **kwargs
 ):
@@ -141,7 +156,8 @@ def prepareData(flux,
     if verbose:
       print('Injecting Fake Data')
 
-    flux = addTemplateToData(flux, wave, times,  orb_params,
+    rv_params['doBarycentricCorrect'] = False    
+    flux = addTemplateToData(flux, wave, rv_params,  orb_params,
             templateFile, fake_signal_strength, verbose=superVerbose)
 
   # Calculate Mask for flux (To be done before continuum subtracting)
@@ -154,12 +170,10 @@ def prepareData(flux,
 
     if use_time_mask:
       time_mask = getTimeMask(flux, *time_mask_cutoffs,
-          smoothingFactor=0, plotWeights = plotTimeMaskWeights,
-          plotMask = plotTimeMask)
+          smoothingFactor=0, showPlots = plotTimeMask)
     
     if use_wave_mask:
-      wave_mask = getWaveMask(flux, wave_mask_window, *wave_mask_cutoffs, smoothingFactor=0, plotWeights = plotWaveMaskWeights,
-          plotMask = plotWaveMask)
+      wave_mask = getWaveMask(flux, wave_mask_window, *wave_mask_cutoffs, smoothingFactor=0, showPlots = plotWaveMask)
 
     mask = combineMasks(time_mask, wave_mask, 
         smoothingFactor=mask_smoothing_factor)
@@ -208,9 +222,10 @@ def calcSysremIterations(order, data_dir, data_pre, data_pos,
   """
 
   # Collect Data
-  flux, error, wave, template, times, ras, decs = collectData(order,
+  flux, error, wave, template, rv_params = collectData(order,
               data_dir, data_pre, data_pos, header_file,
               templateFile, verbose=verbose, **kwargs)
+  rv_params['doBarycentricCorrect'] = False
 
   # Injected KpValue
   kpRange = np.array([orb_params['Kp']])
@@ -225,7 +240,7 @@ def calcSysremIterations(order, data_dir, data_pre, data_pos,
 
     # Calculate maxIterations sysrem iterations
     sysremData = prepareData(flux,
-                    wave=wave, times=times,
+                    wave=wave, rv_params=rv_params,
                     templateFile=templateFile, orb_params=orb_params,
                     fake_signal_strength= signal_strength,
                     sysremIterations=maxIterations, error=error,
@@ -236,7 +251,7 @@ def calcSysremIterations(order, data_dir, data_pre, data_pos,
     # Calculate the detection strength for each iteration
     for residuals in sysremData:
       smudges, vsys_axis, kp_axis = generateSmudgePlot(residuals, wave,
-                                      times, template, kpRange,
+                                      rv_params, template, kpRange,
                                       orb_params, retAxes=True,
                                       verbose=(verbose>1)*2,
                                       **kwargs)
@@ -261,16 +276,16 @@ def pipeline(order, data_dir, data_pre, data_pos,
   """
 
   # Collect Raw Data
-  flux, error, wave, template, times, ras, decs = collectData(order,
+  flux, error, wave, template, rv_params = collectData(order,
               data_dir, data_pre, data_pos, header_file,
               templateFile, verbose=verbose, **kwargs)
 
-  data = prepareData(flux, wave=wave, times=times,
+  data = prepareData(flux, wave=wave, rv_params=rv_params,
           templateFile=templateFile, orb_params=orb_params,
           error=error, verbose=verbose,
           **kwargs)
 
-  smudges, vsys_axis, kp_axis = generateSmudgePlot(data, wave, times,
+  smudges, vsys_axis, kp_axis = generateSmudgePlot(data, wave, rv_params,
                                   template, kpRange, orb_params,
                                   verbose=verbose, retAxes=True,
                                   **kwargs)
@@ -278,6 +293,149 @@ def pipeline(order, data_dir, data_pre, data_pos,
   if verbose:
     print('Done!')
   return smudges, vsys_axis, kp_axis 
+
+def combineSmudges(smudges, x_axes, out_x, normalize=True):
+  retSmudge = []
+  for i in range(len(smudges)):
+    smudge = smudges[i]
+    x      = x_axes[i]
+    interpolatedSmudge = []
+    for ccf in smudge:
+      ip = interpolate.splrep(x, ccf)
+      it = interpolate.splev(out_x, ip)
+      interpolatedSmudge.append(it)
+    retSmudge.append(np.array(interpolatedSmudge))
+
+  retSmudge = np.sum(retSmudge,0)
+  if normalize:
+    retSmudge = retSmudge/np.apply_along_axis(percStd,0,retSmudge)
+  return retSmudge
+
+def getKwargs(date, order):
+  if date == '2016oct15b':
+    date_kwargs = {
+      'default': {  
+        'time_mask_cutoffs' : [2.5,0],
+        'sysremIterations'  : 5
+      },
+      0: {
+        'discard_cols': np.concatenate((np.arange(0,300),np.arange(4750,5047))),
+      },
+      1: {},
+      2: {}
+    }
+  elif date == '2016oct16':
+    date_kwargs = {
+      'default': {
+        'discard_rows' : [-1],
+      },
+      0:{
+        'discard_cols': np.concatenate((np.arange(0,320),np.arange(4890,5046)))
+      },
+      1: {
+        },
+      2: {
+        # 'time_mask_cutoffs' : [2,0],
+        # 'wave_mask_cutoffs' : [10,7],
+        # 'use_wave_mask' : True,
+       }
+    }
+  elif date == '2016oct19':
+    date_kwargs = {
+      'default': {
+        'discard_rows' : [-1],
+        'sysremIterations': 6,
+      },
+      0: {
+        'discard_cols': np.concatenate((np.arange(0,250),np.arange(4649,5048))),
+      },
+      1: {
+        'discard_cols' : np.arange(4400,5048),
+        'trim_sigma' : 20,
+        'trim_neighborhood_size' : 50,
+        'trim_edge_discard': 20,
+        },
+      2: {
+        'trim_sigma' : 10,
+        'trim_neighborhood_size' : 30,
+        },
+      7: {
+        'discard_cols' : np.arange(4000,4141),
+      }
+    }
+  elif date == '2016oct20b':
+    date_kwargs = {
+      'default': {
+        'discard_rows':[61],
+        'sysremIterations': 5,
+      },
+      0: {
+        'discard_cols': np.concatenate((np.arange(300),np.arange(4750,5049)))
+      },
+      8: {
+        'discard_cols': np.arange(3700,4039)
+      }
+      # 1: {
+      #   'discard_rows' : [61],
+      #   'time_mask_cutoffs' : [2.5,0],
+      #   'use_wave_mask' :  True,
+      #   'wave_mask_cutoffs' : [10,3],
+      # },
+      # 2: {
+      #   'discard_rows' : [61],
+      #   'time_mask_cutoffs' : [2.5,0],
+      #   'wave_mask_cutoffs' : [10,7],
+      #   'use_wave_mask' : True,
+      # }
+    }
+  else:
+    date_kwargs = {}
+
+  try:
+    kwargs = date_kwargs[order]
+  except KeyError:
+    kwargs = {}
+  try:
+    kwargs.update(date_kwargs['default'])
+  except KeyError:
+    pass
+
+  return kwargs
+
+def pipelineDate(date, orders, planet,
+        data_dir, data_pre, data_pos, header_file, templateFile,
+        kpRange=None, full_vsys=None, vsys_range=None,
+        normalizeCombined = True, sysremIterations=None,
+        obsname='mmto', raunits='hours', verbose=False):
+  
+
+  orb_params = readOrbParams(planet)
+  smudges = []
+  x_axes  = []
+  y_axes  = []
+  
+  seq = orders
+  if verbose:
+    seq = tqdm(orders, desc='Pipelining:')
+
+  for order in seq:
+    kwargs = getKwargs(date, order)
+    if sysremIterations is not None:
+      kwargs['sysremIterations'] = sysremIterations
+
+    sm,rx,ry = pipeline(order, data_dir, data_pre, data_pos,
+                   header_file, templateFile, orb_params, kpRange,
+                   obsname=obsname, raunits=raunits,
+                   vsys_range=vsys_range, stdDivide=False,
+                   verbose=(verbose-1), **kwargs)
+    smudges.append(sm)
+    x_axes.append(rx)
+    y_axes.append(ry)
+
+  combinedSmudge = combineSmudges(smudges, x_axes, full_vsys,
+                    normalize=normalizeCombined)
+  return combinedSmudge
+
 ###
 
 #-- Plotting Functions
@@ -304,7 +462,8 @@ def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
 
 def plotSmudge(smudges, vsys_axis, kp_axis,
               orb_params=None, titleStr="",
-              xlim=None, ylim=None, cmap='viridis',
+              saveName = None, cmap='viridis',
+              xlim=None, ylim=None
 ):
   """ Plots a smudge Plot
   """
@@ -360,6 +519,9 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
     plt.ylim(*ylim)
 
   plt.tight_layout()
+  if saveName is not None:
+    plt.savefig(saveName)
+
   plt.show()
 ###
 
@@ -413,10 +575,6 @@ def getBounds(flux, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0
 
   return [first_minima,last_maxima]
 
-def getSNRBounds(flux, relativeCutoff=3, absoluteCutoff=0):
-  weights = 1
-
-
 def trimData(flux, wave, error, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0.1, plotBounds = False):
   bounds = getBounds(flux, sigma=sigma, neighborhood_size=neighborhood_size, edge_discard=edge_discard, zeroTol=zeroTol)
   
@@ -435,6 +593,7 @@ def trimData(flux, wave, error, sigma = 10, neighborhood_size=20, edge_discard=1
   bound_error = error[:,bounds[0]:bounds[1]]
 
   return bound_flux, bound_wave, bound_error
+
 ###
 
 #-- Step 2: Align Data
@@ -639,7 +798,7 @@ def varianceWeighting(data):
 
 def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
                 smoothingFactor = 20,
-                plotWeights = False, plotMask = False
+                showPlots = False
 ):
   weights  = np.nan_to_num(np.apply_along_axis(snr, 0, flux))
 
@@ -649,8 +808,15 @@ def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
   weightMean = np.mean(weights)
   weightStd  = np.std(weights)
 
-  if plotWeights:
-    plt.figure()
+  lowerMask = weights < weightMean - relativeCutoff*weightStd
+  absoluteMask = weights < absoluteCutoff
+
+  mask = 1-np.logical_or(lowerMask,absoluteMask)
+  mask = ndimage.minimum_filter(mask, smoothingFactor)
+
+  if showPlots:
+    plt.figure(figsize=(6,8))
+    plt.subplot(211)
     plt.title('Column wise SNRs')
     plt.plot(weights)
     n = len(weights)
@@ -664,16 +830,8 @@ def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
       plt.plot((0,n),(weightMean+i*weightStd,weightMean+i*weightStd),
         label=lab, linestyle=ls, color=colors[np.abs(i)])
     plt.legend(frameon=True,loc='best')
-    plt.show()
-
-  lowerMask = weights < weightMean - relativeCutoff*weightStd
-  absoluteMask = weights < absoluteCutoff
-
-  mask = 1-np.logical_or(lowerMask,absoluteMask)
-  mask = ndimage.minimum_filter(mask, smoothingFactor)
-
-  if plotMask:
-    plt.figure()
+    
+    plt.subplot(212)
     plt.title('Time Mask')
     plt.plot(normalize(np.median(flux,0)))
     plt.plot(mask)
@@ -684,7 +842,7 @@ def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
 
 def getWaveMask(flux, window_size=100, relativeCutoff = 3,
                   absoluteCutoff = 0, smoothingFactor = 20,
-                  plotWeights=False, plotMask=False
+                  showPlots=False,
 ):
   medSpec = np.median(flux,0)
   weights = ndimage.generic_filter(medSpec, snr, size=window_size)
@@ -692,8 +850,15 @@ def getWaveMask(flux, window_size=100, relativeCutoff = 3,
   weightMean = np.mean(weights)
   weightStd  = np.std(weights)
 
-  if plotWeights:
-    plt.figure()
+  lowerMask = weights < weightMean - relativeCutoff*weightStd
+  absoluteMask = weights < absoluteCutoff
+
+  mask = 1-np.logical_or(lowerMask,absoluteMask)
+  mask = ndimage.minimum_filter(mask, smoothingFactor)
+
+  if showPlots:
+    plt.figure(figsize=(6,8))
+    plt.subplot(211)
     plt.title('Windowed SNR along row')
     plt.plot(weights)
     n = len(weights)
@@ -707,16 +872,8 @@ def getWaveMask(flux, window_size=100, relativeCutoff = 3,
       plt.plot((0,n),(weightMean+i*weightStd,weightMean+i*weightStd),
         label=lab, linestyle=ls, color=colors[np.abs(i)])
     plt.legend(frameon=True)
-    plt.show()
-
-  lowerMask = weights < weightMean - relativeCutoff*weightStd
-  absoluteMask = weights < absoluteCutoff
-
-  mask = 1-np.logical_or(lowerMask,absoluteMask)
-  mask = ndimage.minimum_filter(mask, smoothingFactor)
-
-  if plotMask:
-    plt.figure()
+    
+    plt.subplot(212)
     plt.title('Wave Mask')
     plt.plot(normalize(np.median(flux,0)))
     plt.plot(mask)
@@ -793,7 +950,7 @@ def alignXcorMatrix(xcor_interps, vsys, rvs, ext=1):
       aligned_xcm.append(axc)
   return np.array(aligned_xcm)
 
-def initializeSmudgePlot(data, wave, times, template,
+def initializeSmudgePlot(data, wave, rv_params, template,
                         kpRange, orb_params,
                         vsys_range = None,
                         normalizeXCors = True,
@@ -807,6 +964,7 @@ def initializeSmudgePlot(data, wave, times, template,
                           normalize=normalizeXCors, xcorMode=xcorMode,
                           verbose=(verbose>1))
   vsys = getXcorVelocities(wave, xcorMode)
+  times = rv_params['times']
 
   xcor_interps = []
   for xcor in xcm:
@@ -816,20 +974,24 @@ def initializeSmudgePlot(data, wave, times, template,
   orb_params = orb_params.copy()
   orb_params['v_sys'] = 0
   orb_params['Kp']    = 1
-  unitRVs = rv(times, **orb_params)
+  if rv_params['doBarycentricCorrect']:
+    unitRVs, barycentricCorrection = rv(**rv_params, **orb_params, returnBCSeparately=True)
+  else:
+    unitRVs = rv(**rv_params, **orb_params, returnBCSeparately=False)
+    barycentricCorrection = 0
 
   # vsys limited
   if vsys_range != None:
     allRVs = np.tile(unitRVs,(len(kpRange),1)) * kpRange[:,np.newaxis]
-    min_vels = vsys + np.min((np.min(allRVs),0))
-    max_vels = vsys + np.max((np.max(allRVs),0))
+    min_vels = vsys + np.min((np.min(allRVs),0)) + np.min(barycentricCorrection)
+    max_vels = vsys + np.max((np.max(allRVs),0)) + np.max(barycentricCorrection)
     goodCols = np.logical_and(max_vels >= vsys_range[0], min_vels  <= vsys_range[1])
     # print(min_vels,max_vels)
     vsys = vsys[goodCols]
 
-  return xcor_interps, unitRVs, vsys
+  return xcor_interps, unitRVs, barycentricCorrection, vsys
 
-def generateSmudgePlot(data, wave, times, template,
+def generateSmudgePlot(data, wave, rv_params, template,
                         kpRange, orb_params,
                         vsys_range = None,
                         normalizeXCors = True,
@@ -845,10 +1007,12 @@ def generateSmudgePlot(data, wave, times, template,
     print('Initializing')
 
   # Initialize
-  xcor_interps, unitRVs, vsys = initializeSmudgePlot(data, wave, times, template, kpRange, orb_params,
-                                 vsys_range=vsys_range, normalizeXCors=normalizeXCors,
-                                 xcorMode=xcorMode, verbose=verbose)
-
+  xcor_interps, unitRVs, barycentricCorrection, vsys = \
+        initializeSmudgePlot(data, wave, rv_params, 
+                             template, kpRange, orb_params,
+                             vsys_range=vsys_range,
+                             normalizeXCors=normalizeXCors,
+                             xcorMode=xcorMode, verbose=verbose)
   if verbose:
     print('Considering Kps')
   #Setting up verbose iterator
@@ -859,7 +1023,7 @@ def generateSmudgePlot(data, wave, times, template,
   # Calculate Smudges
   smudges = []
   for i in seq:
-    rvs = kpRange[i] * unitRVs
+    rvs = kpRange[i] * unitRVs + barycentricCorrection
     aligned_xcm = alignXcorMatrix(xcor_interps, vsys, rvs, ext=ext)
 
     # return np.array(aligned_xcm)
@@ -921,13 +1085,14 @@ def generateSmudgePlot(data, wave, times, template,
 ###
 
 #-- Template Functions
-def addTemplateToData(flux, wave, times, orb_params, 
+def addTemplateToData(flux, wave, rv_params, orb_params, 
                       templateFile, templateStrength,
                       verbose = False
 ):
   template_interp = getTemplateInterpolation(templateFile)
 
   fake_signal = []
+  times = rv_params['times']
   seq = times
   if verbose:
     seq = tqdm(seq, desc='Generating Fake Data')
@@ -1102,9 +1267,10 @@ def percStd(data):
 ###
 
 #-- Physics
-def rv(t, t0, P, w_deg, e, Kp, v_sys, vectorizeFSolve = False,
-        doBarycentricCorrect=False, ra=None, dec=None,
-        raunits='hours', obsname=None,**kwargs
+def rv(times, t0=0, P=0, w_deg=0, e=0, Kp=0, v_sys=0,
+        vectorizeFSolve = False, doBarycentricCorrect=False,
+        ra=None, dec=None, raunits='hours', obsname=None,
+        returnBCSeparately = True, chunk_size=100, **kwargs
 ):
   """
   Computes RV from given model, barycentric velocity
@@ -1122,7 +1288,7 @@ def rv(t, t0, P, w_deg, e, Kp, v_sys, vectorizeFSolve = False,
   :return: radial velocity
   """
   w = np.deg2rad(w_deg)
-  mean_anomaly = ((2*np.pi)/P * (t - t0)) % (2*np.pi)
+  mean_anomaly = ((2*np.pi)/P * (times - t0)) % (2*np.pi)
 
   if not vectorizeFSolve:
     try:
@@ -1143,8 +1309,22 @@ def rv(t, t0, P, w_deg, e, Kp, v_sys, vectorizeFSolve = False,
   velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w)) + v_sys
 
   if doBarycentricCorrect:
-    bc = barycorr.bvc(t, ra=ra, dec=dec,
-        obsname=obsname, raunits=raunits)
+    # Have to split into chunks b/c webserver can only process
+    # so much
+    bc = np.array([])
+    n = len(times)
+    all_i = np.arange(n)
+    chunks = [all_i[i:i+chunk_size] for i in range(0,n,chunk_size)]
+    for chunk in chunks:
+      bc_chunk = barycorr.bvc(times[chunk], ra=ra[chunk],
+                    dec=dec[chunk], obsname=obsname,
+                    raunits=raunits)
+      bc = np.concatenate((bc,bc_chunk))
+
+    # Subtract BC to be in target frame
+    bc = -1*bc 
+    if returnBCSeparately:
+      return velocity, bc
     velocity = velocity + bc
 
   return velocity
