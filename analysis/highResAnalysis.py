@@ -1,7 +1,7 @@
 import numpy as np
 import pickle, json
-from scipy import ndimage, interpolate, optimize
-from scipy import constants, signal, stats
+from scipy import ndimage as ndi
+from scipy import constants, signal, stats, interpolate, optimize
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import sys
@@ -41,13 +41,13 @@ def collectData(order, data_dir, data_pre, data_pos,
                 #Bad Data Kws
                 discard_rows = [],
                 discard_cols = [],
-                trim_sigma = 10, trim_neighborhood_size = 20,
-                trim_edge_discard = 10, trim_zeroTol = 0.1,
+                doAutoTrimCols = True,
+                trim_neighborhood_size = 20,
                 doAlign = True,
                 alignmentIterations = 3,
                 padLen = 50, peak_half_width = 3,
                 upSampleFactor = 1000,
-                plotSNRS = False, plotBounds = False,
+                plotCuts = False,
                 obsname = None, raunits = None,
                 verbose = False,  **kwargs
 ):
@@ -69,20 +69,9 @@ def collectData(order, data_dir, data_pre, data_pos,
   decs  = np.array(headers['DEC'])
   del headers
 
-  # Discard Bad data
-  discard_rows.sort()
-  for row in discard_rows[::-1]:
-    flux  = np.delete(flux, row, 0)
-    error = np.delete(error, row, 0)
-    times = np.delete(times, row)
-    ras   = np.delete(ras, row)
-    decs  = np.delete(decs, row)
-
-  discard_cols.sort()
-  for col in discard_cols[::-1]:
-    flux  = np.delete(flux, col ,1)
-    error = np.delete(error, col, 1)
-    wave  = np.delete(wave, col)
+  applyRowCuts  = [times, ras, decs]
+  applyColCuts  = [wave]
+  applyBothCuts = [error]
 
   rv_params = {
     'doBarycentricCorrect':True,
@@ -93,23 +82,16 @@ def collectData(order, data_dir, data_pre, data_pos,
     'obsname' : obsname
   }  
 
-  if plotSNRS:
-    plt.figure()
-    plt.suptitle("Order: "+str(order), size=16)
-    plt.subplot(211)
-    plt.title('Row wise SNR (mean/std) \n After hard cuts, before bounds')
-    plt.plot(np.apply_along_axis(snr,1,flux))
-    plt.subplot(212)
-    plt.title('Column wise SNR (mean/std) \n After hard cuts, before bounds')
-    plt.plot(np.apply_along_axis(snr,0,flux))
-    plt.tight_layout()
-    plt.show()
+  flux, applyRowCuts, applyColCuts, applyBothCuts = \
+      applyDataCuts(flux, rowCuts = discard_rows, colCuts = discard_cols,
+        doColEdgeFind = doAutoTrimCols, applyRowCuts=applyRowCuts,
+        applyColCuts=applyColCuts, applyBothCuts=applyBothCuts,
+        neighborhood_size=trim_neighborhood_size, showPlots=plotCuts,
+        figTitle = 'Order: '+str(order))
 
-  # Trim off ends
-  flux, wave, error = trimData(flux, wave, error, sigma = trim_sigma,
-                        neighborhood_size=trim_neighborhood_size,
-                        edge_discard=trim_edge_discard,
-                        zeroTol=trim_zeroTol, plotBounds=plotBounds)
+  times, ras, decs = applyRowCuts
+  wave  = applyColCuts[0]
+  error = applyBothCuts[0]
 
   if doAlign:
     if verbose:
@@ -552,48 +534,104 @@ def readOrbParams(planet, orbParamsDir='./',
 ###
 
 #-- Step 1: Delete bad data
-def getBounds(flux, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0.1):
-  med_data = np.median(flux,0)
-  filt = ndimage.gaussian_filter(med_data, sigma)
-  grad = np.gradient(filt)
+def getEdgeCuts(flux, neighborhood_size=30,
+                showPlots=False, ax = None
+):
+  col_snr = np.nan_to_num(np.apply_along_axis(snr,0,flux))
+  col_snr = col_snr - np.mean(col_snr)
+  smooth = ndi.minimum_filter(col_snr,neighborhood_size)
 
-  # find maxima on right - before ramp down
-  grad_max = ndimage.maximum_filter(grad,neighborhood_size)
-  maxima = (grad == grad_max)
-  maxima[np.isclose(grad_max,0,atol=zeroTol)] = 0
-  maxima[:edge_discard]  = 0
-  maxima[-edge_discard:] = 0
-  last_maxima = np.where(maxima)[0][-1]
+  n = len(smooth)
+  step = np.concatenate((np.ones(n),-1*np.ones(n)))
 
-  # find minima on left - after ramp up
-  grad_min = ndimage.minimum_filter(grad,neighborhood_size)
-  minima = (grad == grad_min)
-  minima[np.isclose(grad_min,0,atol=zeroTol)] = 0
-  minima[-edge_discard:] = 0
-  minima[:edge_discard]  = 0
-  first_minima = np.where(minima)[0][0]
-
-  return [first_minima,last_maxima]
-
-def trimData(flux, wave, error, sigma = 10, neighborhood_size=20, edge_discard=10, zeroTol=0.1, plotBounds = False):
-  bounds = getBounds(flux, sigma=sigma, neighborhood_size=neighborhood_size, edge_discard=edge_discard, zeroTol=zeroTol)
+  xcor = np.correlate(smooth, step, 'valid')
   
-  if plotBounds:
-    plt.figure()
-    plt.title('Bounds for triming: \nLeft: '
-        +str(bounds[0])+', Right: '+str(bounds[1]))
-    plt.plot(normalize(np.median(flux,0)))
-    plt.plot((bounds[0],bounds[0]),(0,1))
-    plt.plot((bounds[1],bounds[1]),(0,1))
-    plt.ylim(-0.1,1.1)
+  # Want maxima on right -> Step Down
+  # Want minima on left  -> Step Up
+  xcorMinima = getLocalMinima(xcor, neighborhood_size)
+  xcorMaxima = getLocalMaxima(xcor, neighborhood_size)
+  
+  left_bound  = xcorMinima[0]
+  right_bound = xcorMaxima[-1]
+      
+  if showPlots:
+    if ax is None:
+      ax = plt.gca()
+    norm_snr    = normalize(col_snr)
+    norm_smooth = normalize(smooth)
+    ax.plot(norm_snr-np.median(norm_snr),label='Column SNR')
+    ax.plot(norm_smooth - np.median(norm_smooth),label='Minimum Filter')
+    ax.plot(normalize(xcor, (-0.5,0)),label='Cross Correlation and Extrema')
+    ax.plot((left_bound,left_bound),(-0.5,0), color='C2')
+    ax.plot((right_bound,right_bound),(-0.5,0), color='C2')
+    ax.legend()
+    ax.set_title('Edge Trimming\nLeft: '+str(left_bound)+', Right: '+str(right_bound))
+    ax.set_xlabel('Column Number')
+    ax.set_ylabel('Normalized SNR')
+    # ax.set_ylim(-0.2,0.2)
+      
+  return left_bound, right_bound
+
+def applyDataCuts(flux, rowCuts=None, colCuts=None, doColEdgeFind=True,
+                  applyRowCuts=None, applyColCuts=None,
+                  applyBothCuts=None, neighborhood_size=30,
+                  showPlots=False, figsize=(8,8), figTitle=""
+):
+  if rowCuts is not None:
+    nRows, nCols = flux.shape
+    rowMask = np.ones(nRows)
+    rowMask[rowCuts] = 0
+    rowMask = rowMask.astype(bool)
+
+    flux = flux[rowMask,...]
+    if applyRowCuts is not None:
+      for i in range(len(applyRowCuts)):
+        applyRowCuts[i] = applyRowCuts[i][rowMask,...]
+    if applyBothCuts is not None:
+      for i in range(len(applyBothCuts)):
+        applyBothCuts[i] = applyBothCuts[i][rowMask,...]
+
+  if colCuts is not None:
+    colMask = np.ones(nCols)
+    colMask[colCuts] = 0
+    colMask = colMask.astype(bool)
+
+    flux = flux[...,colMask]
+    if applyColCuts is not None:
+      for i in range(len(applyColCuts)):
+        applyColCuts[i] = applyColCuts[i][...,colMask]
+    if applyBothCuts is not None:
+      for i in range(len(applyBothCuts)):
+        applyBothCuts[i] = applyBothCuts[i][...,colMask]
+
+  if showPlots:
+    fig, axs = plt.subplots(2,1,figsize=figsize)
+
+    fig.suptitle(figTitle, size=16)
+    axs[0].set_title('Row wise SNR (mean/std) \n After hard cuts, before bounds')
+    axs[0].plot(np.apply_along_axis(snr,1,flux))
+    axs[0].set_xlabel('Row Number')
+    axs[0].set_ylabel('SNR')
+  else:
+    axs = [None,None]
+
+  if doColEdgeFind:
+    leftEdge, rightEdge = getEdgeCuts(flux, neighborhood_size,
+      showPlots, ax=axs[1])
+    flux = flux[...,leftEdge:rightEdge]
+    if applyColCuts is not None:
+      for i in range(len(applyColCuts)):
+        applyColCuts[i] = applyColCuts[i][...,leftEdge:rightEdge]
+    if applyBothCuts is not None:
+      for i in range(len(applyBothCuts)):
+        applyBothCuts[i] = applyBothCuts[i][...,leftEdge:rightEdge]
+
+  if showPlots:
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.9)
     plt.show()
 
-  bound_flux = flux[:,bounds[0]:bounds[1]]
-  bound_wave = wave[bounds[0]:bounds[1]]
-  bound_error = error[:,bounds[0]:bounds[1]]
-
-  return bound_flux, bound_wave, bound_error
-
+  return flux,applyRowCuts, applyColCuts,applyBothCuts
 ###
 
 #-- Step 2: Align Data
@@ -812,7 +850,7 @@ def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
   absoluteMask = weights < absoluteCutoff
 
   mask = 1-np.logical_or(lowerMask,absoluteMask)
-  mask = ndimage.minimum_filter(mask, smoothingFactor)
+  mask = ndi.minimum_filter(mask, smoothingFactor)
 
   if showPlots:
     plt.figure(figsize=(6,8))
@@ -845,7 +883,7 @@ def getWaveMask(flux, window_size=100, relativeCutoff = 3,
                   showPlots=False,
 ):
   medSpec = np.median(flux,0)
-  weights = ndimage.generic_filter(medSpec, snr, size=window_size)
+  weights = ndi.generic_filter(medSpec, snr, size=window_size)
 
   weightMean = np.mean(weights)
   weightStd  = np.std(weights)
@@ -854,7 +892,7 @@ def getWaveMask(flux, window_size=100, relativeCutoff = 3,
   absoluteMask = weights < absoluteCutoff
 
   mask = 1-np.logical_or(lowerMask,absoluteMask)
-  mask = ndimage.minimum_filter(mask, smoothingFactor)
+  mask = ndi.minimum_filter(mask, smoothingFactor)
 
   if showPlots:
     plt.figure(figsize=(6,8))
@@ -884,7 +922,7 @@ def getWaveMask(flux, window_size=100, relativeCutoff = 3,
 
 def combineMasks(*masks, smoothingFactor=20):
   mask = np.prod(masks,0)
-  return ndimage.minimum_filter(mask, smoothingFactor)
+  return ndi.minimum_filter(mask, smoothingFactor)
 
 def applyMask(data, mask):
   # Number of 'good' points remaining per row
@@ -1137,6 +1175,16 @@ def getTemplate(templateFile, wave):
 def snr(data):
   return np.mean(data)/np.std(data)
 
+def getLocalMinima(data, neighborhood_size=20):
+  minima = ndi.minimum_filter(data, neighborhood_size)
+  is_minima = (data == minima)
+  return np.where(is_minima)[0]
+
+def getLocalMaxima(data, neighborhood_size=20):
+  maxima = ndi.maximum_filter(data, neighborhood_size)
+  is_maxima = (data == maxima)
+  return np.where(is_maxima)[0]
+
 def rfft(a, pad=True, axis=-1, returnPadLen = False):
   """ Wrapper for np.fft.rfft
     Automatically pads to length base-2
@@ -1149,7 +1197,6 @@ def rfft(a, pad=True, axis=-1, returnPadLen = False):
     return np.fft.rfft(a, 2**power, axis=axis)
   else:
     return np.fft.rfft(a, axis=axis)
-
 
 def correlate(target, reference, fourier_domain = False):
   """ Correlation function with option to pass data already in the 
@@ -1209,7 +1256,7 @@ def fourierShift1D(y, shift, n=-1, fourier_domain=False):
     m = len(y)
     y, n = rfft(y,returnPadLen=True)
 
-  fft_shift = ndimage.fourier_shift(y, shift, n)
+  fft_shift = ndi.fourier_shift(y, shift, n)
 
   if not fourier_domain:
     return np.fft.irfft(fft_shift)[:m]
