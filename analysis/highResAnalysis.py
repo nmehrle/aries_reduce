@@ -262,7 +262,7 @@ def pipeline(date, order, dataFileParams, orb_params,
               dataFileParams, verbose=verbose, **kwargs)
 
   data = prepareData(flux, wave=wave, rv_params=rv_params,
-          templateFile=templateFile, orb_params=orb_params,
+          orb_params=orb_params,
           error=error, verbose=verbose,
           **kwargs)
 
@@ -274,114 +274,6 @@ def pipeline(date, order, dataFileParams, orb_params,
   if verbose:
     print('Done!')
   return smudges, vsys_axis, kp_axis 
-
-def combineSmudges(smudges, x_axes, out_x, normalize=True):
-  retSmudge = []
-  for i in range(len(smudges)):
-    smudge = smudges[i]
-    x      = x_axes[i]
-    interpolatedSmudge = []
-    for ccf in smudge:
-      ip = interpolate.splrep(x, ccf)
-      it = interpolate.splev(out_x, ip)
-      interpolatedSmudge.append(it)
-    retSmudge.append(np.array(interpolatedSmudge))
-
-  retSmudge = np.sum(retSmudge,0)
-  if normalize:
-    retSmudge = retSmudge/np.apply_along_axis(percStd,0,retSmudge)
-  return retSmudge
-
-def getKwargs(date, order):
-  if date == '2016oct15b':
-    date_kwargs = {
-      'default': {  
-        'time_mask_cutoffs' : [2.5,0],
-        'sysremIterations'  : 5
-      },
-      0: {
-        'discard_cols': np.concatenate((np.arange(0,300),np.arange(4750,5047))),
-      },
-      1: {},
-      2: {}
-    }
-  elif date == '2016oct16':
-    date_kwargs = {
-      'default': {
-        'discard_rows' : [-1],
-      },
-      0:{
-        'discard_cols': np.concatenate((np.arange(0,320),np.arange(4890,5046)))
-      },
-      1: {
-        },
-      2: {
-        # 'time_mask_cutoffs' : [2,0],
-        # 'wave_mask_cutoffs' : [10,7],
-        # 'use_wave_mask' : True,
-       }
-    }
-  elif date == '2016oct19':
-    date_kwargs = {
-      'default': {
-        'discard_rows' : [-1],
-        'sysremIterations': 6,
-      },
-      0: {
-        'discard_cols': np.concatenate((np.arange(0,250),np.arange(4649,5048))),
-      },
-      1: {
-        'discard_cols' : np.arange(4400,5048),
-        'trim_sigma' : 20,
-        'trim_neighborhood_size' : 50,
-        'trim_edge_discard': 20,
-        },
-      2: {
-        'trim_sigma' : 10,
-        'trim_neighborhood_size' : 30,
-        },
-      7: {
-        'discard_cols' : np.arange(4000,4141),
-      }
-    }
-  elif date == '2016oct20b':
-    date_kwargs = {
-      'default': {
-        'discard_rows':[61],
-        'sysremIterations': 5,
-      },
-      0: {
-        'discard_cols': np.concatenate((np.arange(300),np.arange(4750,5049)))
-      },
-      8: {
-        'discard_cols': np.arange(3700,4039)
-      }
-      # 1: {
-      #   'discard_rows' : [61],
-      #   'time_mask_cutoffs' : [2.5,0],
-      #   'use_wave_mask' :  True,
-      #   'wave_mask_cutoffs' : [10,3],
-      # },
-      # 2: {
-      #   'discard_rows' : [61],
-      #   'time_mask_cutoffs' : [2.5,0],
-      #   'wave_mask_cutoffs' : [10,7],
-      #   'use_wave_mask' : True,
-      # }
-    }
-  else:
-    date_kwargs = {}
-
-  try:
-    kwargs = date_kwargs[order]
-  except KeyError:
-    kwargs = {}
-  try:
-    kwargs.update(date_kwargs['default'])
-  except KeyError:
-    pass
-
-  return kwargs
 
 def pipelineDate(date, orders, planet,
         dataFileParams,
@@ -414,7 +306,6 @@ def pipelineDate(date, orders, planet,
   combinedSmudge = combineSmudges(smudges, x_axes, full_vsys,
                     normalize=normalizeCombined)
   return combinedSmudge
-
 ###
 
 #-- Plotting Functions
@@ -536,6 +427,51 @@ def readOrbParams(planet, orbParamsDir='./',
     print(list(data.keys()))
     raise
 
+def getKwargs(date, order):
+  if date == '2016oct15b':
+    date_kwargs = {
+      'default': {  
+        'time_mask_cutoffs' : [2.5,0],
+        'sysremIterations'  : 5
+      },
+      0: {
+      },
+      1: {},
+      2: {}
+    }
+  elif date == '2016oct16':
+    date_kwargs = {
+      'default': {
+        'discard_rows' : [-1],
+      },
+    }
+  elif date == '2016oct19':
+    date_kwargs = {
+      'default': {
+        'discard_rows' : [-1],
+        'sysremIterations': 6,
+      },
+    }
+  elif date == '2016oct20b':
+    date_kwargs = {
+      'default': {
+        'discard_rows':[61],
+        'sysremIterations': 5,
+      },
+    }
+  else:
+    date_kwargs = {}
+
+  try:
+    kwargs = date_kwargs[order]
+  except KeyError:
+    kwargs = {}
+  try:
+    kwargs.update(date_kwargs['default'])
+  except KeyError:
+    pass
+
+  return kwargs
 ###
 
 #-- Step 1: Delete bad data
@@ -1125,6 +1061,23 @@ def generateSmudgePlot(data, wave, rv_params, template,
     return np.array(smudges), vsys, kpRange
   else:
     return np.array(smudges)
+
+def combineSmudges(smudges, x_axes, out_x, normalize=True):
+  retSmudge = []
+  for i in range(len(smudges)):
+    smudge = smudges[i]
+    x      = x_axes[i]
+    interpolatedSmudge = []
+    for ccf in smudge:
+      ip = interpolate.splrep(x, ccf)
+      it = interpolate.splev(out_x, ip)
+      interpolatedSmudge.append(it)
+    retSmudge.append(np.array(interpolatedSmudge))
+
+  retSmudge = np.sum(retSmudge,0)
+  if normalize:
+    retSmudge = retSmudge/np.apply_along_axis(percStd,0,retSmudge)
+  return retSmudge
 ###
 
 #-- Template Functions
