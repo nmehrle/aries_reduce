@@ -36,8 +36,7 @@ else:
   # Physics - Generic Physics functions
 
 #-- Composite Functions
-def collectData(order, data_dir, data_pre, data_pos,
-                header_file, templateFile,
+def collectData(date, order, dataFileParams,
                 #Bad Data Kws
                 discard_rows = [],
                 discard_cols = [],
@@ -54,33 +53,27 @@ def collectData(order, data_dir, data_pre, data_pos,
   """ #Performs Steps 0-2 all at once
   """
   #Load Raw Data
-  dataFileName = data_dir+data_pre+str(order)+data_pos
   if verbose:
     print('Collecting Data')
-  data = collectRawData(dataFileName)
+  data, headers, templateData = collectRawData(date, order,
+    **dataFileParams)
+  
   flux = data['fluxes']
   wave = data['waves']
   error = data['errors']
   del data
 
-  headers = collectRawData(data_dir + header_file)
   times = np.array(headers['JD'])
   ras   = np.array(headers['RA'])
   decs  = np.array(headers['DEC'])
   del headers
 
+  if verbose:
+    print('Trimming Data')
+
   applyRowCuts  = [times, ras, decs]
   applyColCuts  = [wave]
   applyBothCuts = [error]
-
-  rv_params = {
-    'doBarycentricCorrect':True,
-    'ra'      : ras,
-    'dec'     : decs,
-    'times'   : times,
-    'raunits' : raunits,
-    'obsname' : obsname
-  }  
 
   flux, applyRowCuts, applyColCuts, applyBothCuts = \
       applyDataCuts(flux, rowCuts = discard_rows, colCuts = discard_cols,
@@ -93,6 +86,15 @@ def collectData(order, data_dir, data_pre, data_pos,
   wave  = applyColCuts[0]
   error = applyBothCuts[0]
 
+  rv_params = {
+    'doBarycentricCorrect':True,
+    'ra'      : ras,
+    'dec'     : decs,
+    'times'   : times,
+    'raunits' : raunits,
+    'obsname' : obsname
+  }  
+
   if doAlign:
     if verbose:
       print('Aligning Data')
@@ -104,7 +106,7 @@ def collectData(order, data_dir, data_pre, data_pos,
       peak_half_width = peak_half_width,
       upSampleFactor = upSampleFactor, verbose = verbose>1)
     
-  template = getTemplate(templateFile, wave)
+  template = interpolateTemplate(templateData, wave)
 
   if verbose:
     print('Done')
@@ -192,8 +194,7 @@ def prepareData(flux,
 
   return flux
 
-def calcSysremIterations(order, data_dir, data_pre, data_pos,
-                        header_file, templateFile, orb_params,
+def calcSysremIterations(date, order, dataFileParams, orb_params,
                         fake_signal_strengths=[1/1000],
                         maxIterations=10,
                         verbose=False, **kwargs
@@ -204,9 +205,9 @@ def calcSysremIterations(order, data_dir, data_pre, data_pos,
   """
 
   # Collect Data
-  flux, error, wave, template, rv_params = collectData(order,
-              data_dir, data_pre, data_pos, header_file,
-              templateFile, verbose=verbose, **kwargs)
+  flux, error, wave, template, rv_params = collectData(date, order,
+              dataFileParams, verbose=verbose, **kwargs)
+  #TODO: FIX
   rv_params['doBarycentricCorrect'] = False
 
   # Injected KpValue
@@ -248,8 +249,7 @@ def calcSysremIterations(order, data_dir, data_pre, data_pos,
     print('Done!')
   return np.array(all_detection_strengths)
 
-def pipeline(order, data_dir, data_pre, data_pos,
-             header_file, templateFile, orb_params,
+def pipeline(date, order, dataFileParams, orb_params,
              kpRange, verbose=False, **kwargs
 ):
   """ Completely generates a smudge plot for the given order, data
@@ -258,9 +258,8 @@ def pipeline(order, data_dir, data_pre, data_pos,
   """
 
   # Collect Raw Data
-  flux, error, wave, template, rv_params = collectData(order,
-              data_dir, data_pre, data_pos, header_file,
-              templateFile, verbose=verbose, **kwargs)
+  flux, error, wave, template, rv_params = collectData(date, order,
+              dataFileParams, verbose=verbose, **kwargs)
 
   data = prepareData(flux, wave=wave, rv_params=rv_params,
           templateFile=templateFile, orb_params=orb_params,
@@ -385,12 +384,11 @@ def getKwargs(date, order):
   return kwargs
 
 def pipelineDate(date, orders, planet,
-        data_dir, data_pre, data_pos, header_file, templateFile,
+        dataFileParams,
         kpRange=None, full_vsys=None, vsys_range=None,
         normalizeCombined = True, sysremIterations=None,
-        obsname='mmto', raunits='hours', verbose=False):
-  
-
+        obsname='mmto', raunits='hours', verbose=False
+):
   orb_params = readOrbParams(planet)
   smudges = []
   x_axes  = []
@@ -405,8 +403,7 @@ def pipelineDate(date, orders, planet,
     if sysremIterations is not None:
       kwargs['sysremIterations'] = sysremIterations
 
-    sm,rx,ry = pipeline(order, data_dir, data_pre, data_pos,
-                   header_file, templateFile, orb_params, kpRange,
+    sm,rx,ry = pipeline(date, order, dataFileParams, orb_params, kpRange,
                    obsname=obsname, raunits=raunits,
                    vsys_range=vsys_range, stdDivide=False,
                    verbose=(verbose-1), **kwargs)
@@ -507,12 +504,20 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   plt.show()
 ###
 
-#-- Step 0: Raw Data 
-def collectRawData(dataFile):
-  with open(dataFile,'rb') as f:
-    data = pickle.load(f)
+#-- Step 0: Raw Data
+def collectRawData(date, order, 
+                   dirPre, dirPos, dataPre, dataPos,
+                   header, templateDir, templateName):
+  dataDir      = dirPre+date+dirPos
+  dataFile     = dataDir+dataPre+str(order)+dataPos
+  headerFile   = dataDir+header
+  templateFile = templateDir+templateName
 
-  return data
+  data = readFile(dataFile)
+  header = readFile(headerFile)
+  templateData = readFile(templateFile)
+
+  return data, header, templateData
 
 def readOrbParams(planet, orbParamsDir='./', 
                   orbParamsFile='orb_params.json'
@@ -1166,11 +1171,36 @@ def getTemplate(templateFile, wave):
   template_interp = getTemplateInterpolation(templateFile)
   template = interpolate.splev(wave, template_interp)
   return template
+
+def interpolateTemplate(templateData, wave):
+  t_wave = templateData['wavelengths']/10000
+  t_flux = templateData['flux']
+
+  template_interp = interpolate.splrep(t_wave,t_flux)
+  return interpolate.splev(wave, template_interp)
 ###
 
 '''
    Generic Functions
 '''
+#-- File I/O
+def readFile(dataFile):
+  extension = dataFile.split('.')[-1]
+  if extension == 'fits':
+    data = fits.getdata(dataFile)
+  elif extension == 'pickle':
+    try:
+      with open(dataFile, 'rb') as f:
+        data = pickle.load(f)
+    except UnicodeDecodeError:
+      with open(dataFile, 'rb') as f:
+        data = pickle.load(f, encoding='latin1')
+  else:
+    raise ValueError('Currently only fits and pickle are supported')
+
+  return data
+###
+
 #-- Math
 def snr(data):
   return np.mean(data)/np.std(data)
