@@ -195,8 +195,6 @@ def calcSysremIterations(date, order, dataFileParams, orb_params,
   # Collect Data
   flux, error, wave, template, rv_params = collectData(date, order,
               dataFileParams, verbose=verbose, **kwargs)
-  #TODO: FIX
-  rv_params['doBarycentricCorrect'] = False
 
   # Injected KpValue
   kpRange = np.array([orb_params['Kp']])
