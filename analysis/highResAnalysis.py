@@ -113,9 +113,6 @@ def collectData(date, order, dataFileParams,
   return flux, error, wave, template, rv_params
 
 def prepareData(flux,
-              # Fake Signal Params:
-                wave = None, rv_params = None, templateFile = None, 
-                orb_params = None, fake_signal_strength = 0, 
               #Contunuum Params:
                 continuum_order = 4,
               #Masking Params:
@@ -134,15 +131,6 @@ def prepareData(flux,
                 verbose=False, **kwargs
 ):
   superVerbose = verbose>1
-
-  # Add fake signal to Flux
-  if fake_signal_strength != 0:
-    if verbose:
-      print('Injecting Fake Data')
-
-    rv_params['doBarycentricCorrect'] = False    
-    flux = addTemplateToData(flux, wave, rv_params,  orb_params,
-            templateFile, fake_signal_strength, verbose=superVerbose)
 
   # Calculate Mask for flux (To be done before continuum subtracting)
   if use_time_mask or use_wave_mask:
@@ -221,11 +209,10 @@ def calcSysremIterations(date, order, dataFileParams, orb_params,
       print('-----------------------------')
     this_ds = []
 
+    fake_signal = injectFakeSignal(flux, wave, rv_params, orb_params, signal_strength, dataFileParams=dataFileParams, verbose=verbose-1)
+
     # Calculate maxIterations sysrem iterations
-    sysremData = prepareData(flux,
-                    wave=wave, rv_params=rv_params,
-                    templateFile=templateFile, orb_params=orb_params,
-                    fake_signal_strength= signal_strength,
+    sysremData = prepareData(fake_signal,
                     sysremIterations=maxIterations, error=error,
                     returnAllSysrem=True, verbose=verbose, **kwargs)
 
@@ -1081,49 +1068,43 @@ def combineSmudges(smudges, x_axes, out_x, normalize=True):
 ###
 
 #-- Template Functions
-def addTemplateToData(flux, wave, rv_params, orb_params, 
-                      templateFile, templateStrength,
-                      verbose = False
+def injectFakeSignal(flux, wave, rv_params,
+                     orb_params, fake_signal_strength,
+                     templateData = None, templateFile = None,
+                     dataFileParams = None, verbose=False
 ):
-  template_interp = getTemplateInterpolation(templateFile)
+  # Get Template:
+  # Priority of inputs -> dataFileParams -> templatefile ->
+  # templateData
+  template_interp = None
+  if dataFileParams is not None:
+    templateFile = dataFileParams['templateDir'] + dataFileParams['templateName']
+  if templateFile is not None:
+    templateData = readFile(templateFile)
+  if templateData is not None:
+    t_wave = templateData['wavelengths']/10000
+    t_flux = templateData['flux']
+
+    template_interp = interpolate.splrep(t_wave,t_flux)
+  if template_interp is None:
+    raise ValueError('Must specify a template in some form.')
+
+  if verbose:
+    print('Injecting Fake Data')
 
   fake_signal = []
-  times = rv_params['times']
-  seq = times
-  if verbose:
-    seq = tqdm(seq, desc='Generating Fake Data')
-    
-  for time in seq: 
-    sourceWave = doppler(wave, rv(time, **orb_params))
+  rvs = rv(**rv_params, **orb_params)
+
+  seq = rvs
+  if verbose>1:
+    seq = tqdm(seq, desc='Generating Fake Signal')
+
+  for this_rv in seq:
+    sourceWave = doppler(wave, this_rv)
     this_flux  = normalize(interpolate.splev(sourceWave, template_interp))
     fake_signal.append(this_flux)
-  fake_signal = np.array(fake_signal) * np.median(flux,1)[:,np.newaxis]*templateStrength
+  fake_signal = np.array(fake_signal) * np.median(flux,1)[:,np.newaxis]*fake_signal_strength
   return flux + fake_signal
-
-def getTemplateInterpolation(templateFile):
-  extension = templateFile.split('.')[-1]
-  if extension == 'fits':
-    t_wave, t_flux = np.transpose(fits.getdata(templateFile))
-  elif extension == 'pickle':
-    try:
-      with open(templateFile,'rb') as f:
-        data = pickle.load(f)
-    except UnicodeDecodeError:
-      with open(templateFile,'rb') as f:
-        data = pickle.load(f, encoding='latin1')
-
-    t_wave = data['wavelengths']
-    t_flux = data['flux']
-  else:
-    raise ValueError('TemplateFile must be either .fits or .pickle file')
-
-  template_interp = interpolate.splrep(t_wave/10000, t_flux)
-  return template_interp
-
-def getTemplate(templateFile, wave):
-  template_interp = getTemplateInterpolation(templateFile)
-  template = interpolate.splev(wave, template_interp)
-  return template
 
 def interpolateTemplate(templateData, wave):
   t_wave = templateData['wavelengths']/10000
@@ -1300,7 +1281,7 @@ def percStd(data):
 def rv(times, t0=0, P=0, w_deg=0, e=0, Kp=0, v_sys=0,
         vectorizeFSolve = False, doBarycentricCorrect=False,
         ra=None, dec=None, raunits='hours', obsname=None,
-        returnBCSeparately = True, chunk_size=100, **kwargs
+        returnBCSeparately = False, chunk_size=100, **kwargs
 ):
   """
   Computes RV from given model, barycentric velocity
