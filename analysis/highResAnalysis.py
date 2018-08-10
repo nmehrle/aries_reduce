@@ -80,7 +80,7 @@ def collectData(date, order, dataFileParams,
         doColEdgeFind = doAutoTrimCols, applyRowCuts=applyRowCuts,
         applyColCuts=applyColCuts, applyBothCuts=applyBothCuts,
         neighborhood_size=trim_neighborhood_size, showPlots=plotCuts,
-        figTitle = 'Order: '+str(order))
+        figTitle = 'Date: '+date+', Order: '+str(order))
 
   times, ras, decs = applyRowCuts
   wave  = applyColCuts[0]
@@ -264,7 +264,7 @@ def pipelineDate(date, orders, planet,
         dataFileParams,
         kpRange=None, full_vsys=None, vsys_range=None,
         normalizeCombined = True, sysremIterations=None,
-        obsname='mmto', raunits='hours', verbose=False
+        obsname='mmto', raunits='hours', verbose=False, **user_kwargs
 ):
   orb_params = readOrbParams(planet)
   smudges = []
@@ -279,6 +279,8 @@ def pipelineDate(date, orders, planet,
     kwargs = getKwargs(date, order)
     if sysremIterations is not None:
       kwargs['sysremIterations'] = sysremIterations
+
+    kwargs.update(user_kwargs)
 
     sm,rx,ry = pipeline(date, order, dataFileParams, orb_params, kpRange,
                    obsname=obsname, raunits=raunits,
@@ -419,15 +421,12 @@ def getKwargs(date, order):
         'time_mask_cutoffs' : [2.5,0],
         'sysremIterations'  : 5
       },
-      0: {
-      },
-      1: {},
-      2: {}
     }
   elif date == '2016oct16':
     date_kwargs = {
       'default': {
         'discard_rows' : [-1],
+        'sysremIterations': 5,
       },
     }
   elif date == '2016oct19':
@@ -488,6 +487,60 @@ def getEdgeCuts(flux, neighborhood_size=30,
     ax.plot(norm_snr-np.median(norm_snr),label='Column SNR')
     ax.plot(norm_smooth - np.median(norm_smooth),label='Minimum Filter')
     ax.plot(normalize(xcor, (-0.5,0)),label='Cross Correlation and Extrema')
+    ax.plot(normalize(np.median(flux,0),(-1,-0.5)), label='Median Flux')
+    ax.plot((left_bound,left_bound),(-1.0,0), color='C2')
+    ax.plot((right_bound,right_bound),(-1.0,0), color='C2')
+    ax.legend()
+    ax.set_title('Edge Trimming\nLeft: '+str(left_bound)+', Right: '+str(right_bound))
+    ax.set_xlabel('Column Number')
+    ax.set_ylabel('Normalized SNR')
+    # ax.set_ylim(-0.2,0.2)
+      
+  return left_bound, right_bound
+
+
+# TODO: Consider
+def getEdgeCuts2(flux, gaussian_blur = 15, neighborhood_size=30,
+                showPlots=False, ax = None
+):
+  sig = np.median(flux,0)
+  smooth = ndi.gaussian_filter(sig,gaussian_blur)
+
+  grad = np.gradient(smooth)
+  # Maxima on left  -> Left Edge
+  # Minima on Right -> Right Edge
+  maxima = getLocalMaxima(grad,neighborhood_size)
+  minima = getLocalMinima(grad, neighborhood_size)
+
+  minima_store = minima
+  minima = np.setdiff1d(minima,maxima)
+  maxima = np.setdiff1d(maxima,minima_store)
+
+  minima = minima[np.logical_not(np.isclose(grad[minima],0))]
+  maxima = maxima[np.logical_not(np.isclose(grad[maxima],0))]
+
+  leftEdge  = maxima[0]
+  rightEdge = minima[-1]
+
+  grad2 = np.gradient(grad)
+  minima2 = getLocalMinima(grad2, neighborhood_size)
+
+  rightDelta  = rightEdge - minima2
+  rightCorner = rightEdge - np.min(rightDelta[rightDelta>0])
+
+  leftDelta  = minima2 - leftEdge
+  leftCorner = np.min(leftDelta[leftDelta>0]) + leftEdge
+  
+  left_bound  = leftCorner
+  right_bound = rightCorner
+      
+  if showPlots:
+    if ax is None:
+      ax = plt.gca()
+    norm_snr    = normalize(sig)
+    norm_smooth = normalize(smooth)
+    ax.plot(norm_snr-np.median(norm_snr),label='Column SNR')
+    ax.plot(norm_smooth - np.median(norm_smooth),label='Minimum Filter')
     ax.plot((left_bound,left_bound),(-0.5,0), color='C2')
     ax.plot((right_bound,right_bound),(-0.5,0), color='C2')
     ax.legend()
