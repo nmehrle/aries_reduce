@@ -70,8 +70,8 @@ try:
 except:
     import pyfits
 
-import nsdata as ns
-import spec
+import lib.nsdata as ns
+import lib.spec as spec
 import numpy as ny
 from pylab import find
 import pdb
@@ -82,7 +82,6 @@ from functools import partial
 ################################################################
 ##################### User Input Variables #####################
 ################################################################
-
 data = '2016oct15' # GX And
 # data = '2016oct15b' # WASP-33
 # data = '2016oct19' # WASP-33
