@@ -82,7 +82,7 @@ from functools import partial
 ################################################################
 ##################### User Input Variables #####################
 ################################################################
-data = '2016oct15' # GX And
+# data = '2016oct15' # GX And
 # data = '2016oct15b' # WASP-33
 # data = '2016oct19' # WASP-33
 data = '2016oct20b' # WASP-33
@@ -92,7 +92,7 @@ data = '2016oct20b' # WASP-33
 local = False
 
 # Determines which subroutines to run
-makeDark    = False
+makeDark    = True
 makeFlat    = False
 makeMask    = False
 
@@ -105,7 +105,7 @@ calApp      = False
 
 # Target Frames
 preProcTarg = False
-processTarg = True
+processTarg = False
 
 # find target aperatures from full data list.
 # Should only need to be run once for each dataset
@@ -165,12 +165,14 @@ if local:
     _proc = ns._home + "/documents/science/spectroscopy/" + dir_data +"/proc/"
     telluric_list = ns._home + '/documents/science/spectroscopy/telluric_lines/hk_band_lines.dat'
     _corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
+    _obs_db = './obsdb.json'
 else:
-    _raw  = "/dash/exobox/proj/pcsa/data/raw/"  + dir_data + "/spec/"
+    _raw  = "/dash/exobox/proj/pcsa/data/raw/"  + dir_data + "/"
     _proc = "/dash/exobox/proj/pcsa/data/proc/" + data + "/"
     _corquad = "/dash/exobox/code/python/nmehrle/corquad/corquad.e"
     _iraf = "/dash/exobox/code/python/nmehrle/iraf"
     telluric_list = '/dash/exobox/code/python/nmehrle/telluric_lines/hk_band_lines.dat'
+    _obs_db = './obsdb.json'
 
 
 ################################################################
@@ -208,7 +210,8 @@ if True:
 
 
     # Grab observational data from database
-    obs = ns.initobs(data, remote=(not local), _raw=_raw, _proc=_proc)
+    obs = ns.initobs(data, remote=(not local), _raw=_raw, _proc=_proc,
+        _db=_obs_db)
 
     # reprocess obs dict into vars
     _proc  = obs['_proc']

@@ -2190,17 +2190,17 @@ def initobs(date, **kw):
     # 2017-10-25 15:52 NFM: Moved from conditional list to db
 
     import analysis as an
+    import json
 
 
     _aphome = os.path.expanduser('~')[1:].replace('/','_')
-    defaults = dict(remote=False, interp=True)
+    defaults = dict(remote=False, interp=True, _db='obsdb.json')
     for key in defaults:
         if (not kw.has_key(key)):
             kw[key] = defaults[key]
 
-    import dbmanager as dbm
-
-    obsdb = dbm.json('./obsdb.json')
+    with open(kw['_db'],'r') as f:
+      obsdb = json.load(f)
 
     # If date is in db, unpack db into vars
     if(date in obsdb):
