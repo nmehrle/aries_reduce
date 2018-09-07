@@ -1751,7 +1751,8 @@ def preprocess(*args, **kw):
                     trim="no", zerocor="no",
                     flatcor=doflat,   flat=gen_flat,
                     darkcor = doDark, dark=kw['dark'],
-                    fixfile=None, minreplace=0.25, interactive="no")
+                    fixfile=None, minreplace=0.25, interactive="no",
+                    Stderr='preproc.log')
 
             ir.imdelete(gen_flat)
 
@@ -2526,8 +2527,8 @@ def cleanec(input, output, **kw):
             lastbadval = maxind[repind]==(segs.shape[1]-1)
             midbadval = True ^ (firstbadval + lastbadval)
             maxind2 = maxind[repind][midbadval]
-            repind2 = find(repind)[midbadval]
-    
+            repind2 = np.where(repind)[0][midbadval]
+            
             # Need to apply averaging separately from endpoint replacement.
             segs[repind, maxind[repind]] = \
                 firstbadval * segs[repind,1] + \
