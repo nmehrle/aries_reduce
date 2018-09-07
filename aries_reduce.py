@@ -92,7 +92,7 @@ data = '2016oct20b' # WASP-33
 local = False
 
 # Determines which subroutines to run
-makeDark    = True
+makeDark    = False
 makeFlat    = False
 makeMask    = False
 
@@ -104,8 +104,8 @@ processCal  = False
 calApp      = False
 
 # Target Frames
-preProcTarg = False
-processTarg = False
+preProcTarg = True
+processTarg = True
 
 # find target aperatures from full data list.
 # Should only need to be run once for each dataset
@@ -220,8 +220,6 @@ if True:
     filter = obs['filter']  # photometric band in which we're operating
     prefn  = str(obs['prefix'])  # filename prefix
     calnod = obs['calnod'] # whether A0V calibrators nod, or not
-    db_pre = obs['ap_suffix']
-
 
     procData = processCal or processTarg
     preProcData = preProcCal or preProcTarg
@@ -470,6 +468,9 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     ir.imdelete(_sflatdc)
     ir.imdelete(_sflatdc+'big')
 
+    ir.imdelete(_sflatdcn)
+    ir.imdelete(_sflatdcn+'big')
+
     if flats_as_dict:
         for angle in _sflat_dict.keys():
             ir.imdelete(_sflat_dict[angle])
@@ -479,10 +480,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
             ir.imdelete(_sflatdc_dict[angle]+'big')
 
             ir.imdelete(_sflatdcn_dict[angle])
-            ir.imdelete(_sflatdcn_dict[angle]+'big')
-    else:
-      ir.imdelete(_sflatdcn)
-      ir.imdelete(_sflatdcn+'big')
+            ir.imdelete(_sflatdcn_dict[angle]+'big')      
 
     # Correct for dectector crosstalk
     if verbose:
@@ -520,6 +518,8 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
     if verbose:
         print "----------------------------------------"
         print "Done Combining flat frame(s)!"
+        print "----------------------------------------"
+
 
     # Corrects blaze function (Flattens flat frames)
     if verbose:
@@ -527,7 +527,7 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
         print "Correcting for flat field blaze functions"
         print "----------------------------------------"
 
-    def correctblazefn(inflat, outflat):
+    def correctblazefn(inflat, outflat,ref_ap = None):
         #Create padded file to get aperatures on edges
         flatdat = pyfits.getdata(  inflat+postfn)
         flathdr = pyfits.getheader(inflat+postfn)
@@ -542,7 +542,11 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
 
         # Flatten Iraf or otherwise
         if irafapflatten:
-            ir.apflatten(inflat+'big', outflat+'big', sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes',  recenter='yes', resize='yes', edit='yes', trace='yes', fittrace='yes', interactive=interactive, order=3)
+            if ref_ap == None:
+                ir.apflatten(inflat+'big', outflat+'big', sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes',  recenter='yes', resize='yes', edit='yes', trace='yes', fittrace='yes', interactive=interactive, order=3)
+            else:
+                ir.apflatten(inflat+'big', outflat+'big', references=ref_ap, sample=horizsamp, niterate=1, threshold=flat_threshold, function="spline3", pfit = "fit1d", clean='yes',  recenter='yes', resize='yes', edit='yes', trace='no', fittrace='yes', interactive=False, order=3)
+
         else:
             mudflat = pyfits.getdata(inflat + 'big.fits')
             mudhdr = pyfits.getheader(inflat + 'big.fits')
@@ -557,13 +561,13 @@ if makeFlat:  # 2008-06-04 09:21 IJC: dark-correct flats; then create super-flat
         smallnormflat[smallnormflat==0] = 1.
         pyfits.writeto(outflat+postfn, smallnormflat, normflathdr, overwrite=True, output_verify='warn')
 
-    #apply correction to each dc flat
-    #if flats come as a dict, don't correct the overall (no angle dependence) flat
+
+    # Take master flat and use it to trace aperatures for all flats
+    correctblazefn(_sflatdc, _sflatdcn)
+
     if flats_as_dict:
-        for angle in sorted(_sflatdc_dict.iterkeys()):
-            correctblazefn(_sflatdc_dict[angle], _sflatdcn_dict[angle])
-    else:
-        correctblazefn(_sflatdc, _sflatdcn)
+        for angle in tqdm(sorted(_sflatdc_dict.iterkeys())):
+            correctblazefn(_sflatdc_dict[angle], _sflatdcn_dict[angle], ref_ap = _sflatdc+'big.fits')
 
     if verbose:
         print "----------------------------------------"
@@ -673,7 +677,8 @@ if preProcData:
             num_processors=num_processors, saveBadMask=saveBadMask,tryIRccdproc=False, badPixMethod='linear')
 
     if verbose: print "Done correcting cal frames for bad pixels, dark correcting, and flat-fielding!"
-
+###################################################################
+###################################################################
 
 if procData:
     os.chdir(_proc)
@@ -682,8 +687,21 @@ if procData:
     if processCal:
         if calApp:
         # Extract raw spectral data from the echelle images
-          ir.imdelete('@'+speccal)
-          ir.apall('@'+proccal, output='@'+speccal, format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, weights='variance', bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=interactive, nsum=-10, t_function='chebyshev')
+            _cal_ap  = _proc+prefn+"_calap"
+            _cal_aps = _proc+prefn+"_calaps"
+
+            ir.imdelete(_cal_ap)
+            ir.imdelete(_cal_aps)
+            ir.imdelete('@'+speccal)
+
+            ir.imcombine("@"+proccal, output=_cal_ap, combine="average",reject="avsigclip", sigmas=_cal_aps, scale="none", weight="median", bpmasks="")
+
+            ir.apfind(_cal_ap, interactive=interactive, nfind=n_ap, minsep=10)
+            ir.aptrace(_cal_ap, interactive=interactive, recenter='no', resize='no', function='chebyshev', order=3, sample=horizsamp, naverage=3,niterate=3)
+            
+            if verbose:
+                print('Processing Calibration Frames')
+            ir.apall('@'+proccal, output='@'+speccal, references = _cal_ap, trace = 'no', format='echelle', recenter='yes',resize='yes',extras='yes', nfind=n_ap, nsubaps=1, minsep=10, weights='variance', bkg='yes', b_function=bfunc, b_order=bord, b_sample=bsamp, b_naverage=-3, b_niterate=2, t_order=3, t_sample=horizsamp, t_niterate=3, t_naverage=3, background='fit', clean='yes', interactive=False, nsum=-10, t_function='chebyshev')
 
         if verbose:  print "Done extracting spectra from cal stars!"
 
@@ -742,7 +760,6 @@ if procData:
 
             ir.apfind(_targap, interactive=interactive, nfind=n_ap, minsep=10)
             ir.aptrace(_targap, interactive=interactive, recenter='no', resize='no', function='chebyshev', order=3, sample=horizsamp, naverage=3,niterate=3)
-            # ap_ref = db_pre+prefn+"_targap"
 
             if verbose:
                 print "\n\n"
