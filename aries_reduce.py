@@ -82,11 +82,11 @@ from functools import partial
 ################################################################
 ##################### User Input Variables #####################
 ################################################################
-# data = '2016oct15' # GX And
+# data = '2016oct15a' # HD187123b
 # data = '2016oct15b' # WASP-33
 # data = '2016oct19' # WASP-33
-data = '2016oct20b' # WASP-33
-# data = '2016oct16' #Ups And
+# data = '2016oct20b' # WASP-33
+data = '2016oct17' #Ups And
 
 # Optional change in directory structure for Exobox
 local = False
@@ -101,10 +101,10 @@ preProcCal  = False
 processCal  = False
 
 # Extract calibration frame aperatures for processCal
-calApp      = False
+calApp      = True
 
 # Target Frames
-preProcTarg = True
+preProcTarg = False
 processTarg = True
 
 # find target aperatures from full data list.
