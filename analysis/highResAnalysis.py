@@ -22,7 +22,7 @@ if type_of_script() == 'jupyter':
   from tqdm import tqdm_notebook as tqdm
 else:
   from tqdm import tqdm
-
+ 
 # Sections:
   # Composite Functions - Wraps everything Together
   # Plotting Functions
@@ -36,27 +36,36 @@ else:
   # Physics - Generic Physics functions
 
 #-- Composite Functions
-def collectData(date, order, dataFileParams,
-                #Bad Data Kws
-                discard_rows = [],
-                discard_cols = [],
-                doAutoTrimCols = True,
-                trim_neighborhood_size = 20,
-                doAlign = True,
-                alignmentIterations = 3,
-                padLen = 50, peak_half_width = 3,
-                upSampleFactor = 1000,
-                plotCuts = False,
-                obsname = None, raunits = None,
-                verbose = False,  **kwargs
+# def collectData(date, order, dataFileParams,
+def collectOrder(date, order, dataPaths,
+                  #Bad Data Kws
+                  discard_rows = [],
+                  discard_cols = [],
+                  doAutoTrimCols = True,
+                  trim_neighborhood_size = 20,
+                  doAlign = True,
+                  alignmentIterations = 3,
+                  padLen = 50, peak_half_width = 3,
+                  upSampleFactor = 1000,
+                  plotCuts = False,
+                  obsname = None, raunits = None,
+                  verbose = False,  **kwargs
 ):
-  """ #Performs Steps 0-2 all at once
+  """ Collects, trims and aligns data for 1 order from 1 date
+      
+      USE:
+        flux, error, wave, template, rv_params = collectOrder(date, order, dataPaths, **analysis_kws)
+
+        analysis_kws set from setOrder
+
+      VIEW OPTIONS:
+        plotCuts - generate plots of where data is trimmed
   """
   #Load Raw Data
   if verbose:
     print('Collecting Data')
-  data, headers, templateData = collectRawData(date, order,
-    **dataFileParams)
+  data, headers, templateData = collectRawOrder(date, order,
+    **dataPaths)
   
   flux = data['fluxes']
   wave = data['waves']
@@ -130,6 +139,28 @@ def prepareData(flux,
                 plotMask = False,
                 verbose=False, **kwargs
 ):
+  """
+    Removes Coherent Structure from data
+    OPTIONS:
+      Continuum Subtract: use continuum_order>0 to subtract
+
+      MASK: set use_time_mask or use_wave_mask = True
+
+      SYSREM: set sysremIterations > 0
+        Requires param error to be set
+
+      Variance Weight: set doVarianceWeight = True
+
+      PLOTTING:
+        plotTimeMask
+        plotWaveMask
+        plotMask
+
+    USE:
+      data = prepareData(flux, error=error, **analysis_kws)
+      analsys_kws set from setOrder()
+
+  """
   superVerbose = verbose>1
 
   # Calculate Mask for flux (To be done before continuum subtracting)
@@ -289,7 +320,6 @@ def pipelineDate(date, orders, planet,
     smudges.append(sm)
     x_axes.append(rx)
     y_axes.append(ry)
-
   combinedSmudge = combineSmudges(smudges, x_axes, full_vsys,
                     normalize=normalizeCombined)
   return combinedSmudge
@@ -372,8 +402,12 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
 
   if xlim is not None:
     plt.xlim(*xlim)
+  else:
+    plt.xlim(np.min(vsys_axis)/1000,np.max(vsys_axis)/1000)
   if ylim is not None:
     plt.ylim(*ylim)
+  else:
+    plt.ylim(np.min(kp_axis)/1000,np.max(kp_axis)/1000)
 
   plt.tight_layout()
   if saveName is not None:
@@ -383,9 +417,39 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
 ###
 
 #-- Step 0: Raw Data
-def collectRawData(date, order, 
+def setPlanet(planet, dataPaths, verbose=False):
+  with open(dataPaths['planetData']) as f:
+      data = json.load(f)
+  data = data[planet]
+  orb_params   = data['orb_params']
+  dates        = data['dates']
+  dataPaths['templateName'] = data['template']
+    
+  if verbose:
+    print('Possible Dates for '+planet+' are '+str([key for key in dates.keys()])+'.')
+    
+  return orb_params, dates, dataPaths
+
+def setDate(date, dates):
+  date_kws = {**dates[date]}
+  order_kws = date_kws.pop('order_kws')
+  default_kws = date_kws.pop('default_kws')
+  date_kws.update(default_kws)
+
+  return date_kws, order_kws
+
+def setOrder(order, date_kws, order_kws):
+  try:
+    data = order_kws[str(order)]
+  except KeyError:
+    return date_kws
+
+  date_kws.update(data)
+  return date_kws
+
+def collectRawOrder(date, order, 
                    dirPre, dirPos, dataPre, dataPos,
-                   header, templateDir, templateName):
+                   header, templateDir, templateName, **kwargs):
   dataDir      = dirPre+date+dirPos
   dataFile     = dataDir+dataPre+str(order)+dataPos
   headerFile   = dataDir+header
@@ -396,66 +460,6 @@ def collectRawData(date, order,
   templateData = readFile(templateFile)
 
   return data, header, templateData
-
-def readOrbParams(planet, orbParamsDir='./', 
-                  orbParamsFile='orb_params.json'
-):
-  """ Reads In orbital parameters from the database
-  """
-  fileStr = orbParamsDir + orbParamsFile
-  with open(fileStr) as f:
-    data = json.load(f)
-
-  try:
-    return data[planet]
-  except KeyError:
-    print('Planet "'+str(planet)+'" not found')
-    print('Valid Planets Are: ')
-    print(list(data.keys()))
-    raise
-
-def getKwargs(date, order):
-  if date == '2016oct15b':
-    date_kwargs = {
-      'default': {  
-        'time_mask_cutoffs' : [2.5,0],
-        'sysremIterations'  : 5
-      },
-    }
-  elif date == '2016oct16':
-    date_kwargs = {
-      'default': {
-        'discard_rows' : [-1],
-        'sysremIterations': 5,
-      },
-    }
-  elif date == '2016oct19':
-    date_kwargs = {
-      'default': {
-        'discard_rows' : [-1],
-        'sysremIterations': 6,
-      },
-    }
-  elif date == '2016oct20b':
-    date_kwargs = {
-      'default': {
-        'discard_rows':[61],
-        'sysremIterations': 5,
-      },
-    }
-  else:
-    date_kwargs = {}
-
-  try:
-    kwargs = date_kwargs[order]
-  except KeyError:
-    kwargs = {}
-  try:
-    kwargs.update(date_kwargs['default'])
-  except KeyError:
-    pass
-
-  return kwargs
 ###
 
 #-- Step 1: Delete bad data
@@ -999,9 +1003,14 @@ def initializeSmudgePlot(data, wave, rv_params, template,
 
   # vsys limited
   if vsys_range != None:
-    allRVs = np.tile(unitRVs,(len(kpRange),1)) * kpRange[:,np.newaxis]
-    min_vels = vsys + np.min((np.min(allRVs),0)) + np.min(barycentricCorrection)
-    max_vels = vsys + np.max((np.max(allRVs),0)) + np.max(barycentricCorrection)
+    # Tile together entire range of planet RV's we consider
+    allRVs = np.tile(unitRVs,(len(kpRange),1)) * kpRange[:,np.newaxis] 
+    # Roll in barycentric correction
+    allRVs = allRVs + barycentricCorrection
+
+    # Find which columns will end up having a contribution to a systemic velocity in the given range
+    min_vels = vsys + np.min((np.min(allRVs),0))
+    max_vels = vsys + np.max((np.max(allRVs),0)) 
     goodCols = np.logical_and(max_vels >= vsys_range[0], min_vels  <= vsys_range[1])
     # print(min_vels,max_vels)
     vsys = vsys[goodCols]
@@ -1094,6 +1103,11 @@ def generateSmudgePlot(data, wave, rv_params, template,
 
   if stdDivide:
     smudges = smudges/np.apply_along_axis(percStd,1,smudges)[:,np.newaxis]
+
+  if vsys_range is not None:
+    goodCols = np.logical_and(vsys>=vsys_range[0], vsys<=vsys_range[1])
+    smudges = smudges[:, goodCols]
+    vsys = vsys[goodCols]
 
   if retAxes:
     return np.array(smudges), vsys, kpRange
