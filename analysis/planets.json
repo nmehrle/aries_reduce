@@ -1,0 +1,101 @@
+{
+  "ups-and": {
+    "orb_params": {
+      "t0"    : 2450034.06,
+      "P"     : 4.61711,
+      "w_deg" : 44.519, 
+      "e"     : 0.012, 
+      "Kp"    : 55000, 
+      "v_sys" : -28590
+    },
+    "dates": {
+      "2016oct16": {
+        "obsname": "mmto",
+        "raunits": "hours",
+        "default_kws": {
+          "discard_rows": [-1],
+          "sysremIterations": 5
+        },
+        "order_kws": {}
+      },
+      "2016oct17": {
+        "obsname": "mmto",
+        "raunits": "hours",
+        "default_kws": {
+          "sysremIterations": 5
+        },
+        "order_kws": {}
+      }
+    },
+    "template": "upsand.pickle"
+  },
+  "wasp-33": {
+    "orb_params": {
+      "t0"    : 2454590.17936,
+      "P"     : 1.21986967,
+      "w_deg" : -90,
+      "e"     : 0,
+      "Kp"    : 239000,
+      "v_sys" : -1500  
+    },
+    "dates" : {
+      "2016oct15b": {
+        "obsname": "mmto",
+        "raunits": "hours",
+        "default_kws": {
+          "discard_rows": [-1],
+          "sysremIterations": 5
+        },
+        "order_kws": {}
+      },
+      "2016oct19": {
+        "obsname": "mmto",
+        "raunits": "hours",
+        "default_kws": {
+          "discard_rows": [-1],
+          "sysremIterations": 6
+        },
+        "order_kws": {}
+      },
+      "2016oct20b": {
+        "obsname": "mmto",
+        "raunits": "hours",
+        "default_kws": {
+          "discard_rows": [61],
+          "sysremIterations": 5
+        },
+        "order_kws": {}
+      }
+    },
+    "template": "wasp33.pickle",
+    "ref"   : "http://iopscience.iop.org/article/10.3847/1538-3881/aa9433/pdf"
+  },
+  "hd-187123": {
+    "orb_params": {
+      "t0"    : 52111.7,
+      "P"     : 3.0965828,
+      "w_deg" : 25,
+      "e"     : 0.01,
+      "Kp"    : 50000,
+      "v_sys" : 0  
+    },
+    "dates": {
+      "2016oct15a": {},
+      "2016oct21": {}
+    },
+    "template": "upsand.pickle"
+  },
+  "hd-189733": {
+    "orb_params": {},
+    "dates": {
+      "2016oct18a": {},
+      "2016oct20a": {}
+    }
+  },
+  "kelt-7": {
+    "orb_params": {},
+    "dates": {
+      "2016oct18b": {}
+    }
+  }
+}

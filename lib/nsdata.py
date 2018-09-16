@@ -1761,7 +1761,8 @@ def preprocess(*args, **kw):
                     trim="no", zerocor="no",
                     flatcor=doflat,   flat=kw['flat'],
                     darkcor = doDark, dark=kw['dark'],
-                    fixfile=None, minreplace=0.25, interactive="no")
+                    fixfile=None, minreplace=0.25, interactive="no",
+                    Stderr='preproc.log')
     if dobfix: 
         # Make an extra bad-pixel mask from any _negative_ values, and
         # combine it with the global bad-pixel mask; necessary because
