@@ -37,7 +37,7 @@ else:
 
 #-- Composite Functions
 # def collectData(date, order, dataFileParams,
-def collectOrder(date, order, dataPaths,
+def collectOrder(dataPaths,
                   #Bad Data Kws
                   discard_rows = [],
                   discard_cols = [],
@@ -64,8 +64,7 @@ def collectOrder(date, order, dataPaths,
   #Load Raw Data
   if verbose:
     print('Collecting Data')
-  data, headers, templateData = collectRawOrder(date, order,
-    **dataPaths)
+  data, headers, templateData = collectRawOrder(**dataPaths)
   
   flux = data['fluxes']
   wave = data['waves']
@@ -89,7 +88,7 @@ def collectOrder(date, order, dataPaths,
         doColEdgeFind = doAutoTrimCols, applyRowCuts=applyRowCuts,
         applyColCuts=applyColCuts, applyBothCuts=applyBothCuts,
         neighborhood_size=trim_neighborhood_size, showPlots=plotCuts,
-        figTitle = 'Date: '+date+', Order: '+str(order))
+        figTitle = 'Date: '+dataPaths['date']+', Order: '+str(dataPaths['order']))
 
   times, ras, decs = applyRowCuts
   wave  = applyColCuts[0]
@@ -213,7 +212,8 @@ def prepareData(flux,
 
   return flux
 
-def calcSysremIterations(date, order, dataFileParams, orb_params,
+def calcSysremIterations(planet, date, order, dataPaths,
+                        fake_Kp, fake_Vsys,
                         fake_signal_strengths=[1/1000],
                         maxIterations=10,
                         verbose=False, **kwargs
@@ -224,11 +224,18 @@ def calcSysremIterations(date, order, dataFileParams, orb_params,
   """
 
   # Collect Data
-  flux, error, wave, template, rv_params = collectData(date, order,
-              dataFileParams, verbose=verbose, **kwargs)
+  dataPaths, orb_params, analysis_kws =\
+          setObs(planet, date, order, dataPaths)
+  analysis_kws.update(kwargs)
+
+  flux, error, wave, template, rv_params =\
+        collectOrder(dataPaths, **analysis_kws)
+
+  # data = prepareData(flux, error=error,
+  #           **analysis_kws)
 
   # Injected KpValue
-  kpRange = np.array([orb_params['Kp']])
+  kpRange = np.array([fake_Kp])
   all_detection_strengths = []
 
   for signal_strength in fake_signal_strengths:
@@ -238,7 +245,9 @@ def calcSysremIterations(date, order, dataFileParams, orb_params,
       print('-----------------------------')
     this_ds = []
 
-    fake_signal = injectFakeSignal(flux, wave, rv_params, orb_params, signal_strength, dataFileParams=dataFileParams, verbose=verbose-1)
+    fake_signal = injectFakeSignal(flux, wave, rv_params, orb_params,
+                    fake_Kp, fake_Vsys, signal_strength, 
+                    dataPaths=dataPaths, verbose=verbose-1)
 
     # Calculate maxIterations sysrem iterations
     sysremData = prepareData(fake_signal,
@@ -265,64 +274,129 @@ def calcSysremIterations(date, order, dataFileParams, orb_params,
     print('Done!')
   return np.array(all_detection_strengths)
 
-def pipeline(date, order, dataFileParams, orb_params,
-             kpRange, verbose=False, **kwargs
+def analyzeOrder(planet = None, date = None, order = None,
+                  orb_params=None, analysis_kws=None,
+                  dataPaths=None, kpRange=None, verbose=False,
+                  **kwargs
 ):
-  """ Completely generates a smudge plot for the given order, data
-    See collectData(), prepareData(), generateSmudgePlot() for 
-    optional parameter inputs
-  """
+  '''
+    Generates Smudge for order.
 
-  # Collect Raw Data
-  flux, error, wave, template, rv_params = collectData(date, order,
-              dataFileParams, verbose=verbose, **kwargs)
+    Inputs:
+      kpRange and 
 
-  data = prepareData(flux, wave=wave, rv_params=rv_params,
-          orb_params=orb_params,
-          error=error, verbose=verbose,
-          **kwargs)
-
-  smudges, vsys_axis, kp_axis = generateSmudgePlot(data, wave, rv_params,
-                                  template, kpRange, orb_params,
-                                  verbose=verbose, retAxes=True,
-                                  **kwargs)
-
-  if verbose:
-    print('Done!')
-  return smudges, vsys_axis, kp_axis 
-
-def pipelineDate(date, orders, planet,
-        dataFileParams,
-        kpRange=None, full_vsys=None, vsys_range=None,
-        normalizeCombined = True, sysremIterations=None,
-        obsname='mmto', raunits='hours', verbose=False, **user_kwargs
-):
-  orb_params = readOrbParams(planet)
-  smudges = []
-  x_axes  = []
-  y_axes  = []
+      Either A) planet, date, order, dataPaths
+      or     B) dataPaths, orb_params, analysis_kws
+  '''
   
+  # If planet is specified, assume input option A
+  if planet is not None:
+    dataPaths, orb_params, analysis_kws =\
+          setObs(planet, date, order, dataPaths)
+
+
+  analysis_kws.update(kwargs)
+
+  flux, error, wave, template, rv_params =\
+        collectOrder(dataPaths, **analysis_kws)
+
+  if 'injectSignal' in kwargs and kwargs['injectSignal'] == True:
+    fake_signal = injectFakeSignal(flux, wave, rv_params, orb_params,
+                    kwargs['fake_Kp'], kwargs['fake_Vsys'], kwargs['signal_strength'], 
+                    dataPaths=dataPaths, verbose=verbose)
+
+    flux = fake_signal
+
+  data = prepareData(flux, error=error,
+            **analysis_kws)
+
+  smudge, vsys_axis, kp_axis =\
+       generateSmudgePlot(data, wave, rv_params, template,
+                          kpRange, orb_params, **analysis_kws)
+
+  return smudge, vsys_axis, kp_axis
+
+def analyzeDate(planet = None, date = None, orders = None,
+                 orb_params=None, dates=None,
+                 dataPaths=None, kpRange=None, verbose=False,
+                 vsys_range=None, vsys_spacing=None,
+                 normalizeCombined=True,
+                 **kwargs
+):
+  '''
+    Generates Smudge plot for date, combining the orders given
+
+    Inputs:
+      kpRange and
+
+      Either A) planet, date, orders, dataPaths
+      or     B) dataPaths, orb_params, dates, date, orders
+  '''
+  if planet is not None:
+    orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
+  date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
+
   seq = orders
   if verbose:
-    seq = tqdm(orders, desc='Pipelining:')
+    seq = tqdm(orders, desc='Orders')
 
+  # Cannot normalize each smudge plot, only normalize finished product
+  kwargs['stdDivide'] = False
+  kwargs['vsys_range'] = vsys_range
+
+  smudges = []
+  x_axes = []
+  y_axes = []
   for order in seq:
-    kwargs = getKwargs(date, order)
-    if sysremIterations is not None:
-      kwargs['sysremIterations'] = sysremIterations
+    analysis_kws, dataPaths = setOrder(order, date_kws, order_kws, dataPaths)
+    smudge, vsys_axis, kp_axis =\
+            analyzeOrder(dataPaths = dataPaths, orb_params = orb_params,
+              analysis_kws=analysis_kws, kpRange=kpRange,
+              verbose=verbose, **kwargs)
 
-    kwargs.update(user_kwargs)
+    smudges.append(smudge)
+    x_axes.append(vsys_axis)
+    y_axes.append(kp_axis)
 
-    sm,rx,ry = pipeline(date, order, dataFileParams, orb_params, kpRange,
-                   obsname=obsname, raunits=raunits,
-                   vsys_range=vsys_range, stdDivide=False,
-                   verbose=(verbose-1), **kwargs)
-    smudges.append(sm)
-    x_axes.append(rx)
-    y_axes.append(ry)
-  combinedSmudge = combineSmudges(smudges, x_axes, full_vsys,
-                    normalize=normalizeCombined)
-  return combinedSmudge
+  if vsys_range is None:
+    # Set vsys_range so that we don't extrapolate
+    minVal = np.max([np.min(x_axis) for x_axis in x_axes])
+    maxVal = np.min([np.max(x_axis) for x_axis in x_axes])
+
+    full_xAxes = [minVal, maxVal]
+  else:
+    full_xAxes = vsys_range
+
+  if vsys_spacing is None:
+    spacing = np.min([getSpacing(x_axis) for x_axis in x_axes])
+  else:
+    spacing = vsys_spacing
+
+  full_xAxes = np.arange(full_xAxes[0],full_xAxes[1]+spacing, spacing)
+  full_smudge = combineSmudges(smudges, x_axes, full_xAxes, 
+                  normalize=normalizeCombined)
+
+  return full_smudge, full_xAxes, kpRange
+
+def analyzePlanet(planet, orders, dataPaths, kpRange, verbose=False,
+                  **kwargs
+):
+  orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
+
+  seq = dates
+  if verbose:
+    seq = tqdm(dates, desc='Dates')
+
+  for date in seq:
+    date_smudge, date_xAxes, kpRange =\
+         analyzeDate(dataPaths=dataPaths, orb_params=orb_params,
+          dates=dates, date=date, orders=orders, kpRange=kpRange,
+          verbose=verbose, normalizeCombined=False,
+          vsys_range=vsys_range,vsys_spacing=vsys_spacing,
+          **kwargs)
+    
+
+
 ###
 
 #-- Plotting Functions
@@ -350,7 +424,7 @@ def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
 def plotSmudge(smudges, vsys_axis, kp_axis,
               orb_params=None, titleStr="",
               saveName = None, cmap='viridis',
-              xlim=None, ylim=None
+              xlim=None, ylim=None, clim=None
 ):
   """ Plots a smudge Plot
   """
@@ -370,7 +444,11 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
 
   plt.figure()
   # Plot smudges
-  plt.pcolormesh(pltXs,pltYs,smudges,cmap=cmap)
+  if clim is not None:
+    plt.pcolormesh(pltXs,pltYs,smudges,cmap=cmap,
+      vmin=clim[0],vmax=clim[1])
+  else:
+    plt.pcolormesh(pltXs,pltYs,smudges,cmap=cmap)
   cbar = plt.colorbar()
 
   # Plot Peak
@@ -417,6 +495,24 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
 ###
 
 #-- Step 0: Raw Data
+def setObs(planet, date, order, dataPaths):
+  orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
+  date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
+  analysis_kws, dataPaths = setOrder(order, date_kws, order_kws, dataPaths)
+  return dataPaths, orb_params, analysis_kws
+
+def getDates(planet, dataPaths):
+  '''
+    Used to get the available dates for a planet.
+
+    Redundant but user friendly
+  '''
+  with open(dataPaths['planetData']) as f:
+      data = json.load(f)
+  data  = data[planet]
+  dates = data['dates']
+  return dates
+
 def setPlanet(planet, dataPaths, verbose=False):
   with open(dataPaths['planetData']) as f:
       data = json.load(f)
@@ -430,22 +526,26 @@ def setPlanet(planet, dataPaths, verbose=False):
     
   return orb_params, dates, dataPaths
 
-def setDate(date, dates):
+def setDate(date, dates, dataPaths):
   date_kws = {**dates[date]}
   order_kws = date_kws.pop('order_kws')
   default_kws = date_kws.pop('default_kws')
   date_kws.update(default_kws)
 
-  return date_kws, order_kws
+  dataPaths['date'] = date
 
-def setOrder(order, date_kws, order_kws):
+  return date_kws, order_kws, dataPaths
+
+def setOrder(order, date_kws, order_kws, dataPaths):
+  dataPaths['order'] = order
+
   try:
     data = order_kws[str(order)]
   except KeyError:
-    return date_kws
+    return date_kws,dataPaths
 
   date_kws.update(data)
-  return date_kws
+  return date_kws, dataPaths
 
 def collectRawOrder(date, order, 
                    dirPre, dirPos, dataPre, dataPos,
@@ -1100,19 +1200,20 @@ def generateSmudgePlot(data, wave, rv_params, template,
 
         pvals.append(p)
       smudges.append(-stats.norm.ppf(pvals))
-
+  smudges = np.array(smudges)
   if stdDivide:
     smudges = smudges/np.apply_along_axis(percStd,1,smudges)[:,np.newaxis]
 
   if vsys_range is not None:
     goodCols = np.logical_and(vsys>=vsys_range[0], vsys<=vsys_range[1])
+    goodCols = ndi.maximum_filter(goodCols,3)
     smudges = smudges[:, goodCols]
     vsys = vsys[goodCols]
 
   if retAxes:
-    return np.array(smudges), vsys, kpRange
+    return smudges, vsys, kpRange
   else:
-    return np.array(smudges)
+    return smudges
 
 def combineSmudges(smudges, x_axes, out_x, normalize=True):
   retSmudge = []
@@ -1133,17 +1234,21 @@ def combineSmudges(smudges, x_axes, out_x, normalize=True):
 ###
 
 #-- Template Functions
-def injectFakeSignal(flux, wave, rv_params,
-                     orb_params, fake_signal_strength,
-                     templateData = None, templateFile = None,
-                     dataFileParams = None, verbose=False
+def injectFakeSignal(flux, wave, rv_params, orb_params, 
+                    fake_Kp, fake_Vsys, fake_signal_strength,
+                    templateData = None, templateFile = None,
+                    dataPaths = None, verbose=False
 ):
+  print('---------------------')
+  print('Injecting Fake Signal')
+  print('---------------------')
+
   # Get Template:
-  # Priority of inputs -> dataFileParams -> templatefile ->
+  # Priority of inputs -> dataPaths -> templatefile ->
   # templateData
   template_interp = None
-  if dataFileParams is not None:
-    templateFile = dataFileParams['templateDir'] + dataFileParams['templateName']
+  if dataPaths is not None:
+    templateFile = dataPaths['templateDir'] + dataPaths['templateName']
   if templateFile is not None:
     templateData = readFile(templateFile)
   if templateData is not None:
@@ -1154,10 +1259,10 @@ def injectFakeSignal(flux, wave, rv_params,
   if template_interp is None:
     raise ValueError('Must specify a template in some form.')
 
-  if verbose:
-    print('Injecting Fake Data')
-
   fake_signal = []
+  orb_params = orb_params.copy()
+  orb_params['Kp'] = fake_Kp
+  orb_params['v_sys'] = fake_Vsys
   rvs = rv(**rv_params, **orb_params)
 
   seq = rvs
