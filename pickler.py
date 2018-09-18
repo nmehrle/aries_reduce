@@ -17,7 +17,7 @@ if verbose:
 # Computer can only handle so many open files at a time
 maxChunkSize = 123
 suffix    = 'int.fits'
-data     = '2016oct15a' #wasp33
+data     = '2016oct17' #wasp33
 _proc    = '/dash/exobox/proj/pcsa/data/proc/' + data + '/'
 
 spectarg = _proc+'spectarg'
