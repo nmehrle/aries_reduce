@@ -5,8 +5,10 @@
       "P"     : 4.61711,
       "w_deg" : 44.519, 
       "e"     : 0.012, 
-      "Kp"    : 55000, 
-      "v_sys" : -28590
+      "comment": {
+        "Kp"    : 55000, 
+        "v_sys" : -28590
+      }
     },
     "dates": {
       "2016oct16": {
@@ -24,7 +26,20 @@
         "default_kws": {
           "sysremIterations": 5
         },
-        "order_kws": {}
+        "order_kws": {
+          "0": {
+            "sysremIterations": 9
+          },
+          "1": {
+            "sysremIterations": 8
+          },
+          "2": {
+            "sysremIterations": 2
+          },
+          "3": {
+            "sysremIterations": 7
+          }
+        }
       }
     },
     "template": "upsand.pickle"
@@ -80,8 +95,22 @@
       "v_sys" : 0  
     },
     "dates": {
-      "2016oct15a": {},
-      "2016oct21": {}
+      "2016oct15a": {
+        "obsname": "mmto",
+        "raunits": "hours",
+        "default_kws": {
+          "sysremIterations": 6
+        },
+        "order_kws": {}
+      },
+      "2016oct21": {
+        "obsname": "mmto",
+        "raunits": "hours",
+        "default_kws": {
+          "sysremIterations": 6
+        },
+        "order_kws": {}
+      }
     },
     "template": "upsand.pickle"
   },
