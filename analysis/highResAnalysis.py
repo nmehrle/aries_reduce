@@ -1,5 +1,7 @@
 import numpy as np
 import pickle, json
+import multiprocessing as mp
+from functools import partial
 from scipy import ndimage as ndi
 from scipy import constants, signal, stats, interpolate, optimize
 from astropy.io import fits
@@ -65,6 +67,8 @@ def collectOrder(dataPaths,
   if verbose:
     print('Collecting Data')
   data, headers, templateData = collectRawOrder(**dataPaths)
+
+  #pbar.update()
   
   flux = data['fluxes']
   wave = data['waves']
@@ -94,6 +98,8 @@ def collectOrder(dataPaths,
   wave  = applyColCuts[0]
   error = applyBothCuts[0]
 
+  #pbar.update()
+
   rv_params = {
     'doBarycentricCorrect':True,
     'ra'      : ras,
@@ -109,6 +115,7 @@ def collectOrder(dataPaths,
     highSNR = getHighestSNR(flux,error)
     ref = flux[highSNR]
 
+    # Send pbar to alignment
     flux, error = alignment(flux, ref, iterations=alignmentIterations,
       error = error, padLen = padLen,
       peak_half_width = peak_half_width,
@@ -180,6 +187,8 @@ def prepareData(flux,
     mask = combineMasks(time_mask, wave_mask, 
         smoothingFactor=mask_smoothing_factor)
 
+    #pbar.update()
+
     if plotMask:
       plt.figure()
       plt.title('Full Mask')
@@ -195,13 +204,19 @@ def prepareData(flux,
 
     flux = continuumSubtract(flux, continuum_order, verbose=superVerbose)
 
+    #pbar.update()
+
   # Apply mask to flux
   if use_time_mask or use_wave_mask:
     flux = applyMask(flux, mask)
 
+    # pbar.update()
+
   if sysremIterations != 0:
     if verbose:
       print('Doing Sysrem')
+
+    # Send pbar to sysrem
     flux = sysrem(flux, error, sysremIterations, verbose=superVerbose,
       retAll = returnAllSysrem)
 
@@ -294,7 +309,7 @@ def analyzeOrder(planet = None, date = None, order = None,
     dataPaths, orb_params, analysis_kws =\
           setObs(planet, date, order, dataPaths)
 
-
+  kwargs['verbose'] = verbose
   analysis_kws.update(kwargs)
 
   flux, error, wave, template, rv_params =\
@@ -316,11 +331,26 @@ def analyzeOrder(planet = None, date = None, order = None,
 
   return smudge, vsys_axis, kp_axis
 
+
+# Used for multiprocessign in analyzeData
+def processOrder(i, orders, date_kws, order_kws,
+          dataPaths, verbose, orb_params, 
+          kpRange, kwargs
+):
+  analysis_kws, dataPaths = setOrder(orders[i], date_kws, order_kws, dataPaths)
+  superVerbose = np.max((0, verbose-1))
+  smudge, vsys_axis, kp_axis =\
+          analyzeOrder(dataPaths = dataPaths, orb_params = orb_params,
+            analysis_kws=analysis_kws, kpRange=kpRange,
+            verbose=superVerbose, **kwargs)
+
+  return smudge, vsys_axis, kp_axis
+
 def analyzeDate(planet = None, date = None, orders = None,
                  orb_params=None, dates=None,
                  dataPaths=None, kpRange=None, verbose=False,
-                 vsys_range=None, vsys_spacing=None,
-                 normalizeCombined=True,
+                 commonXAxes=None,
+                 normalizeCombined=True, cores=1,
                  **kwargs
 ):
   '''
@@ -336,47 +366,58 @@ def analyzeDate(planet = None, date = None, orders = None,
     orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
   date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
 
-  seq = orders
-  if verbose:
-    seq = tqdm(orders, desc='Orders')
-
   # Cannot normalize each smudge plot, only normalize finished product
+  # Set up to use vsys_axis
+
+  if commonXAxes is not None:
+    vsys_range = [commonXAxes[0], commonXAxes[-1]]
+    kwargs['vsys_range'] = vsys_range
+
   kwargs['stdDivide'] = False
-  kwargs['vsys_range'] = vsys_range
 
   smudges = []
   x_axes = []
   y_axes = []
-  for order in seq:
-    analysis_kws, dataPaths = setOrder(order, date_kws, order_kws, dataPaths)
-    smudge, vsys_axis, kp_axis =\
-            analyzeOrder(dataPaths = dataPaths, orb_params = orb_params,
-              analysis_kws=analysis_kws, kpRange=kpRange,
-              verbose=verbose, **kwargs)
 
+  # Setup Multiprocessing
+  pool = mp.Pool(processes = cores)
+  seq = enumerate(pool.imap_unordered(partial(processOrder,
+                                              orders=orders,
+                                              date_kws=date_kws,
+                                              order_kws=order_kws,
+                                              dataPaths=dataPaths,
+                                              verbose=verbose,
+                                              orb_params=orb_params,
+                                              kpRange=kpRange,
+                                              kwargs=kwargs),
+                                      range(len(orders))))
+  if verbose:
+    pbar = tqdm(total=len(orders),desc='Orders')
+
+  for i, order_output in seq:
+    smudge, vsys_axis, kp_axis = order_output 
     smudges.append(smudge)
     x_axes.append(vsys_axis)
     y_axes.append(kp_axis)
 
-  if vsys_range is None:
+    if verbose:
+      pbar.update()
+  if verbose:
+    pbar.close()
+
+  # Generate Common Vsys Axis if none specified
+  if commonXAxes is None:
     # Set vsys_range so that we don't extrapolate
     minVal = np.max([np.min(x_axis) for x_axis in x_axes])
     maxVal = np.min([np.max(x_axis) for x_axis in x_axes])
 
-    full_xAxes = [minVal, maxVal]
-  else:
-    full_xAxes = vsys_range
-
-  if vsys_spacing is None:
-    spacing = np.min([getSpacing(x_axis) for x_axis in x_axes])
-  else:
-    spacing = vsys_spacing
-
-  full_xAxes = np.arange(full_xAxes[0],full_xAxes[1]+spacing, spacing)
-  full_smudge = combineSmudges(smudges, x_axes, full_xAxes, 
+    spacing = np.max([getSpacing(x_axis) for x_axis in x_axes])
+    commonXAxes = np.arange(minVal, maxVal, spacing)
+  
+  combined = combineSmudges(smudges, x_axes, commonXAxes, 
                   normalize=normalizeCombined)
 
-  return full_smudge, full_xAxes, kpRange
+  return combined, commonXAxes, kpRange
 
 def analyzePlanet(planet, orders, dataPaths, kpRange, verbose=False,
                   **kwargs
@@ -387,13 +428,28 @@ def analyzePlanet(planet, orders, dataPaths, kpRange, verbose=False,
   if verbose:
     seq = tqdm(dates, desc='Dates')
 
+  smudges = []
+  x_axes = []
+  y_axes = []
+
+
   for date in seq:
     date_smudge, date_xAxes, kpRange =\
          analyzeDate(dataPaths=dataPaths, orb_params=orb_params,
           dates=dates, date=date, orders=orders, kpRange=kpRange,
+          cores=len(orders),
           verbose=verbose, normalizeCombined=False,
           vsys_range=vsys_range,vsys_spacing=vsys_spacing,
           **kwargs)
+
+    smudges.append(date_smudge)
+    x_axes.append(date_xAxes)
+    y_axes.append(kpRange)
+
+  full_vsys = np.arange(-100,100)*1000
+  full_smudge = combineSmudges(smudges, x_axes, full_vsys, normalize=True)
+  return full_smudge, full_vsys, kpRange
+
     
 
 
@@ -422,7 +478,7 @@ def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
   plt.show()
 
 def plotSmudge(smudges, vsys_axis, kp_axis,
-              orb_params=None, titleStr="",
+              orb_params=None, title="",
               saveName = None, cmap='viridis',
               xlim=None, ylim=None, clim=None
 ):
@@ -439,9 +495,18 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
 
   # Get Max of SmudgePlot
   ptmax = np.unravel_index(smudges.argmax(), smudges.shape)
+
+  if xlim is not None:
+    left_cut  = np.argmin(np.abs(xs - xlim[0]))
+    right_cut = np.argmin(np.abs(xs - xlim[1]))
+    cut_smudges = smudges[:,left_cut:right_cut+1]
+
+    ptmax = np.unravel_index(cut_smudges.argmax(), cut_smudges.shape)
+    ptmax = (ptmax[0], ptmax[1]+left_cut)
+    
   ptx = xs[ptmax[1]]
   pty = ys[ptmax[0]]
-
+  
   plt.figure()
   # Plot smudges
   if clim is not None:
@@ -470,11 +535,11 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   plt.ylabel("Kp (km/s)")
   plt.xlabel("V_sys (km/s)")
 
-  if titleStr!="":
-    titleStr += '\n'
-  plt.title(titleStr+'Max Value: '+ 
-      str(np.round(smudges[ptmax],2)) + ': (' + str(np.round(ptx,1)) + ',' + str(int(np.round(pty,0))) + ')' +
-      true_val_str)
+  if title!="":
+    title += '\n'
+  plt.title(title+'Max Value: '+ 
+      str(np.round(smudges[ptmax],2)) + ': (' + str(np.round(ptx,1)) + ',' +
+      str(int(np.round(pty,0))) + ')' + true_val_str)
 
   cbar.set_label('Sigma')
 
@@ -511,7 +576,7 @@ def getDates(planet, dataPaths):
       data = json.load(f)
   data  = data[planet]
   dates = data['dates']
-  return dates
+  return list(dates.keys())
 
 def setPlanet(planet, dataPaths, verbose=False):
   with open(dataPaths['planetData']) as f:
@@ -1487,7 +1552,9 @@ def rv(times, t0=0, P=0, w_deg=0, e=0, Kp=0, v_sys=0,
 
   true_anomaly = np.arctan2(np.sqrt(1-e**2) * np.sin(E), np.cos(E)-e)
 
-  velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w)) + v_sys
+  # TODO
+  # velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w)) + v_sys
+  velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w))
 
   if doBarycentricCorrect:
     # Have to split into chunks b/c webserver can only process
