@@ -25,6 +25,12 @@ if type_of_script() == 'jupyter':
 else:
   from tqdm import tqdm
  
+
+#TODO
+# all in m/s instead of km/s randomly
+# vsysRange -> Common X axes
+# verbosity
+
 # Sections:
   # Composite Functions - Wraps everything Together
   # Plotting Functions
@@ -56,7 +62,7 @@ def collectOrder(dataPaths,
   """ Collects, trims and aligns data for 1 order from 1 date
       
       USE:
-        flux, error, wave, template, rv_params = collectOrder(date, order, dataPaths, **analysis_kws)
+        flux, error, wave, template, rv_params = collectOrder(dataPaths, **analysis_kws)
 
         analysis_kws set from setOrder
 
@@ -101,7 +107,6 @@ def collectOrder(dataPaths,
   #pbar.update()
 
   rv_params = {
-    'doBarycentricCorrect':True,
     'ra'      : ras,
     'dec'     : decs,
     'times'   : times,
@@ -227,10 +232,13 @@ def prepareData(flux,
 
   return flux
 
+
+# IS WRONG For nonzero vsys
 def calcSysremIterations(planet, date, order, dataPaths,
                         fake_Kp, fake_Vsys,
                         fake_signal_strengths=[1/1000],
-                        maxIterations=10,
+                        maxIterations=10, 
+                        kpExtent = 10, vsysExtent = 20,
                         verbose=False, **kwargs
 ):
   """ Computes detection strength vs number of sysrem iterations
@@ -250,7 +258,7 @@ def calcSysremIterations(planet, date, order, dataPaths,
   #           **analysis_kws)
 
   # Injected KpValue
-  kpRange = np.array([fake_Kp])
+  kpRange = np.arange(-kpExtent, kpExtent)*1000 + fake_Kp
   all_detection_strengths = []
 
   for signal_strength in fake_signal_strengths:
@@ -262,15 +270,13 @@ def calcSysremIterations(planet, date, order, dataPaths,
 
     fake_signal = injectFakeSignal(flux, wave, rv_params, orb_params,
                     fake_Kp, fake_Vsys, signal_strength, 
-                    dataPaths=dataPaths, verbose=verbose-1)
+                    dataPaths=dataPaths, verbose=(verbose>1)*2, doAlert=False)
 
     # Calculate maxIterations sysrem iterations
     sysremData = prepareData(fake_signal,
                     sysremIterations=maxIterations, error=error,
-                    returnAllSysrem=True, verbose=verbose, **kwargs)
+                    returnAllSysrem=True, verbose=(verbose>1)*2, **kwargs)
 
-    if verbose:
-        print('Calculating Detection Strengths')
     # Calculate the detection strength for each iteration
     for residuals in sysremData:
       smudges, vsys_axis, kp_axis = generateSmudgePlot(residuals, wave,
@@ -278,10 +284,13 @@ def calcSysremIterations(planet, date, order, dataPaths,
                                       orb_params, retAxes=True,
                                       verbose=(verbose>1)*2,
                                       **kwargs)
-
-      x_pos = np.argmin(np.abs(vsys_axis - orb_params['v_sys']))
-      detection_strength = smudges[0,x_pos]
-      this_ds.append(detection_strength)
+      
+      vsys_window_min = np.where(vsys_axis <= fake_Vsys - vsysExtent*1000)[0][-1]
+      vsys_window_max = np.where(vsys_axis >= fake_Vsys + vsysExtent*1000)[0][0]
+      vsys_window = vsys_axis[vsys_window_min:vsys_window_max+1]
+      window = smudges[:,vsys_window_min:vsys_window_max+1]
+      
+      this_ds.append(np.max(window))
 
     all_detection_strengths.append(np.array(this_ds))
 
@@ -419,10 +428,33 @@ def analyzeDate(planet = None, date = None, orders = None,
 
   return combined, commonXAxes, kpRange
 
+def processDate(i, dates, orders, date_kws, order_kws,
+          dataPaths, verbose, orb_params, 
+          kpRange, kwargs
+):
+  orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
+  date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
+  analysis_kws, dataPaths = setOrder(order, date_kws, order_kws, dataPaths)
+
+  date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
+  analysis_kws, dataPaths = setOrder(orders[i], date_kws, order_kws, dataPaths)
+  superVerbose = np.max((0, verbose-1))
+  smudge, vsys_axis, kp_axis =\
+          analyzeOrder(dataPaths = dataPaths, orb_params = orb_params,
+            analysis_kws=analysis_kws, kpRange=kpRange,
+            verbose=superVerbose, **kwargs)
+
+  return smudge, vsys_axis, kp_axis
+
 def analyzePlanet(planet, orders, dataPaths, kpRange, verbose=False,
                   **kwargs
 ):
   orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
+  if commonXAxes is not None:
+    vsys_range = [commonXAxes[0], commonXAxes[-1]]
+    kwargs['vsys_range'] = vsys_range
+
+  kwargs['stdDivide'] = False
 
   seq = dates
   if verbose:
@@ -655,7 +687,7 @@ def getEdgeCuts(flux, neighborhood_size=30,
     norm_smooth = normalize(smooth)
     ax.plot(norm_snr-np.median(norm_snr),label='Column SNR')
     ax.plot(norm_smooth - np.median(norm_smooth),label='Minimum Filter')
-    ax.plot(normalize(xcor, (-0.5,0)),label='Cross Correlation and Extrema')
+    ax.plot(normalize(xcor, (-0.5,0)),label='Cross Correlation')
     ax.plot(normalize(np.median(flux,0),(-1,-0.5)), label='Median Flux')
     ax.plot((left_bound,left_bound),(-1.0,0), color='C2')
     ax.plot((right_bound,right_bound),(-1.0,0), color='C2')
@@ -723,7 +755,7 @@ def getEdgeCuts2(flux, gaussian_blur = 15, neighborhood_size=30,
 def applyDataCuts(flux, rowCuts=None, colCuts=None, doColEdgeFind=True,
                   applyRowCuts=None, applyColCuts=None,
                   applyBothCuts=None, neighborhood_size=30,
-                  showPlots=False, figsize=(8,8), figTitle=""
+                  showPlots=False, figsize=(12,8), figTitle=""
 ):
   if rowCuts is not None:
     nRows, nCols = flux.shape
@@ -1001,7 +1033,7 @@ def getTimeMask(flux, relativeCutoff = 3, absoluteCutoff = 0,
   mask = ndi.minimum_filter(mask, smoothingFactor)
 
   if showPlots:
-    plt.figure(figsize=(6,8))
+    plt.figure(figsize=(12,8))
     plt.subplot(211)
     plt.title('Column wise SNRs')
     plt.plot(weights)
@@ -1160,11 +1192,8 @@ def initializeSmudgePlot(data, wave, rv_params, template,
   orb_params = orb_params.copy()
   orb_params['v_sys'] = 0
   orb_params['Kp']    = 1
-  if rv_params['doBarycentricCorrect']:
-    unitRVs, barycentricCorrection = rv(**rv_params, **orb_params, returnBCSeparately=True)
-  else:
-    unitRVs = rv(**rv_params, **orb_params, returnBCSeparately=False)
-    barycentricCorrection = 0
+  unitRVs = getRV(**rv_params, **orb_params)
+  barycentricCorrection = getBarycentricCorrection(**rv_params)
 
   # vsys limited
   if vsys_range != None:
@@ -1302,11 +1331,12 @@ def combineSmudges(smudges, x_axes, out_x, normalize=True):
 def injectFakeSignal(flux, wave, rv_params, orb_params, 
                     fake_Kp, fake_Vsys, fake_signal_strength,
                     templateData = None, templateFile = None,
-                    dataPaths = None, verbose=False
+                    dataPaths = None, doAlert = True, verbose = False
 ):
-  print('---------------------')
-  print('Injecting Fake Signal')
-  print('---------------------')
+  if doAlert:
+    print('---------------------')
+    print('Injecting Fake Signal')
+    print('---------------------')
 
   # Get Template:
   # Priority of inputs -> dataPaths -> templatefile ->
@@ -1328,7 +1358,9 @@ def injectFakeSignal(flux, wave, rv_params, orb_params,
   orb_params = orb_params.copy()
   orb_params['Kp'] = fake_Kp
   orb_params['v_sys'] = fake_Vsys
-  rvs = rv(**rv_params, **orb_params)
+  rvs = getRV(**rv_params, **orb_params)
+  bc  = getBarycentricCorrection(**rv_params)
+  rvs = rvs + bc + fake_Vsys
 
   seq = rvs
   if verbose>1:
@@ -1513,10 +1545,12 @@ def percStd(data):
 ###
 
 #-- Physics
-def rv(times, t0=0, P=0, w_deg=0, e=0, Kp=0, v_sys=0,
-        vectorizeFSolve = False, doBarycentricCorrect=False,
-        ra=None, dec=None, raunits='hours', obsname=None,
-        returnBCSeparately = False, chunk_size=100, **kwargs
+#TODO: 
+  # phase func
+  # w = w-180 equal to rv = -rv
+  # switch to rv = -rv
+def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
+        vectorizeFSolve = False, **kwargs
 ):
   """
   Computes RV from given model, barycentric velocity
@@ -1533,7 +1567,7 @@ def rv(times, t0=0, P=0, w_deg=0, e=0, Kp=0, v_sys=0,
       # Output will be in this unit
   :return: radial velocity
   """
-  w = np.deg2rad(w_deg)
+  w = np.deg2rad(w_deg-180)
   mean_anomaly = ((2*np.pi)/P * (times - t0)) % (2*np.pi)
 
   if not vectorizeFSolve:
@@ -1556,26 +1590,24 @@ def rv(times, t0=0, P=0, w_deg=0, e=0, Kp=0, v_sys=0,
   # velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w)) + v_sys
   velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w))
 
-  if doBarycentricCorrect:
-    # Have to split into chunks b/c webserver can only process
-    # so much
-    bc = np.array([])
-    n = len(times)
-    all_i = np.arange(n)
-    chunks = [all_i[i:i+chunk_size] for i in range(0,n,chunk_size)]
-    for chunk in chunks:
-      bc_chunk = barycorr.bvc(times[chunk], ra=ra[chunk],
-                    dec=dec[chunk], obsname=obsname,
-                    raunits=raunits)
-      bc = np.concatenate((bc,bc_chunk))
-
-    # Subtract BC to be in target frame
-    bc = -1*bc 
-    if returnBCSeparately:
-      return velocity, bc
-    velocity = velocity + bc
-
   return velocity
+
+def getBarycentricCorrection(times, ra, dec, raunits, obsname, chunk_size=120, **kwargs):
+  # Have to split into chunks b/c webserver can only process
+  # so much
+  bc = np.array([])
+  n = len(times)
+  all_i = np.arange(n)
+  chunks = [all_i[i:i+chunk_size] for i in range(0,n,chunk_size)]
+  for chunk in chunks:
+    bc_chunk = barycorr.bvc(times[chunk], ra=ra[chunk],
+                  dec=dec[chunk], obsname=obsname,
+                  raunits=raunits)
+    bc = np.concatenate((bc,bc_chunk))
+
+  # Subtract BC to be in target frame
+  bc = -1*bc 
+  return bc
 
 def doppler(wave,v, source=False):
   # v in m/s
