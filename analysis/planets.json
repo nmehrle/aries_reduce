@@ -16,7 +16,7 @@
         "raunits": "hours",
         "default_kws": {
           "discard_rows": [-1],
-          "sysremIterations": 5
+          "sysremIterations": 7
         },
         "order_kws": {}
       },
@@ -24,7 +24,7 @@
         "obsname": "mmto",
         "raunits": "hours",
         "default_kws": {
-          "sysremIterations": 5
+          "sysremIterations": 7
         },
         "order_kws": {
           "0": {
@@ -34,7 +34,8 @@
             "sysremIterations": 8
           },
           "2": {
-            "sysremIterations": 2
+            "sysremIterations": 2,
+            "time_mask_cutoffs": [3,0]
           },
           "3": {
             "sysremIterations": 7
@@ -42,13 +43,13 @@
         }
       }
     },
-    "template": "upsand.pickle"
+    "template": "upsand-noinvert.pickle"
   },
   "wasp-33": {
     "orb_params": {
       "t0"    : 2454590.17936,
       "P"     : 1.21986967,
-      "w_deg" : -90,
+      "w_deg" : 90,
       "e"     : 0,
       "Kp"    : 239000,
       "v_sys" : -1500  
