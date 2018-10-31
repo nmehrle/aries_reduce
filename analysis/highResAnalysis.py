@@ -29,7 +29,6 @@ else:
 #TODO
 # all in m/s instead of km/s randomly
 # vsysRange -> Common X axes
-# verbosity
 
 # Sections:
   # Composite Functions - Wraps everything Together
@@ -259,6 +258,8 @@ def calcSysremIterations(planet, date, order, dataPaths,
 
   # Injected KpValue
   kpRange = np.arange(-kpExtent, kpExtent)*1000 + fake_Kp
+  if len(kpRange) == 0:
+    kpRange = np.array([fake_Kp])
   all_detection_strengths = []
 
   for signal_strength in fake_signal_strengths:
@@ -428,63 +429,82 @@ def analyzeDate(planet = None, date = None, orders = None,
 
   return combined, commonXAxes, kpRange
 
-def processDate(i, dates, orders, date_kws, order_kws,
-          dataPaths, verbose, orb_params, 
+def processDate(i, dates, orders, dataPaths, verbose, orb_params, 
           kpRange, kwargs
 ):
-  orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
-  date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
-  analysis_kws, dataPaths = setOrder(order, date_kws, order_kws, dataPaths)
+  n = len(orders)
+  date  = list(dates.keys())[int(i/n)]
+  j = i%n
 
   date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
-  analysis_kws, dataPaths = setOrder(orders[i], date_kws, order_kws, dataPaths)
-  superVerbose = np.max((0, verbose-1))
-  smudge, vsys_axis, kp_axis =\
-          analyzeOrder(dataPaths = dataPaths, orb_params = orb_params,
-            analysis_kws=analysis_kws, kpRange=kpRange,
-            verbose=superVerbose, **kwargs)
 
-  return smudge, vsys_axis, kp_axis
+  return processOrder(j, orders, date_kws, order_kws, dataPaths,
+                      verbose, orb_params, kpRange, kwargs)
 
-def analyzePlanet(planet, orders, dataPaths, kpRange, verbose=False,
-                  **kwargs
+def analyzePlanet(planet, orders, dataPaths, kpRange, 
+                  cores=1, dates=None, commonXAxes=None, normalizeCombined=True,
+                  verbose=False, **kwargs
 ):
-  orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
+  orb_params, all_dates, dataPaths = setPlanet(planet, dataPaths)
+
+  if dates is None:
+    dates = all_dates
+  elif type(dates) is str:
+    dates = {dates: all_dates[dates]}
+  elif type(dates) is list:
+    temp = {}
+    for date in dates:
+      temp[date] = all_dates[date]
+    dates = temp
+
+  n_orders = len(orders) * len(dates)
+  kwargs['stdDivide'] = False
+
   if commonXAxes is not None:
     vsys_range = [commonXAxes[0], commonXAxes[-1]]
     kwargs['vsys_range'] = vsys_range
-
-  kwargs['stdDivide'] = False
-
-  seq = dates
-  if verbose:
-    seq = tqdm(dates, desc='Dates')
 
   smudges = []
   x_axes = []
   y_axes = []
 
+  # Setup Multiprocessing
+  pool = mp.Pool(processes = cores)
+  seq = enumerate(pool.imap_unordered(partial(processDate,
+                                              dates=dates,
+                                              orders=orders,
+                                              dataPaths=dataPaths,
+                                              verbose=verbose,
+                                              orb_params=orb_params,
+                                              kpRange=kpRange,
+                                              kwargs=kwargs),
+                                      range(n_orders)))
+  if verbose:
+    pbar = tqdm(total=n_orders,desc='Analyzing')
 
-  for date in seq:
-    date_smudge, date_xAxes, kpRange =\
-         analyzeDate(dataPaths=dataPaths, orb_params=orb_params,
-          dates=dates, date=date, orders=orders, kpRange=kpRange,
-          cores=len(orders),
-          verbose=verbose, normalizeCombined=False,
-          vsys_range=vsys_range,vsys_spacing=vsys_spacing,
-          **kwargs)
+  for i, order_output in seq:
+    smudge, vsys_axis, kp_axis = order_output 
+    smudges.append(smudge)
+    x_axes.append(vsys_axis)
+    y_axes.append(kp_axis)
 
-    smudges.append(date_smudge)
-    x_axes.append(date_xAxes)
-    y_axes.append(kpRange)
+    if verbose:
+      pbar.update()
+  if verbose:
+    pbar.close()
+  # Generate Common Vsys Axis if none specified
+  if commonXAxes is None:
+    # Set vsys_range so that we don't extrapolate
+    minVal = np.max([np.min(x_axis) for x_axis in x_axes])
+    maxVal = np.min([np.max(x_axis) for x_axis in x_axes])
 
-  full_vsys = np.arange(-100,100)*1000
-  full_smudge = combineSmudges(smudges, x_axes, full_vsys, normalize=True)
-  return full_smudge, full_vsys, kpRange
+    spacing = np.max([getSpacing(x_axis) for x_axis in x_axes])
+    commonXAxes = np.arange(minVal, maxVal, spacing)
+  
+  combined = combineSmudges(smudges, x_axes, commonXAxes, 
+                  normalize=normalizeCombined)
 
-    
-
-
+  return combined, commonXAxes, kpRange
 ###
 
 #-- Plotting Functions
