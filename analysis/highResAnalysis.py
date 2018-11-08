@@ -231,13 +231,11 @@ def prepareData(flux,
 
   return flux
 
-
-# IS WRONG For nonzero vsys
 def calcSysremIterations(planet, date, order, dataPaths,
                         fake_Kp, fake_Vsys,
                         fake_signal_strengths=[1/1000],
-                        maxIterations=10, 
-                        kpExtent = 10, vsysExtent = 20,
+                        maxIterations=10,
+                        kpExtent = 2, vsysExtent = 4,
                         verbose=False, **kwargs
 ):
   """ Computes detection strength vs number of sysrem iterations
@@ -299,6 +297,75 @@ def calcSysremIterations(planet, date, order, dataPaths,
     print('Done!')
   return np.array(all_detection_strengths)
 
+def processSysrem(i, planet, dates, orders, dataPaths,
+                  fake_Kp, fake_Vsys, fake_signal_strength,
+                  maxIterations=10, kpExtent = 2, vsysExtent = 4,
+                  verbose=False, **kwargs
+):
+  n = len(orders)
+  date  = list(dates.keys())[int(i/n)]
+  order = orders[i%n]
+
+  return calcSysremIterations(planet, date, order, dataPaths,
+              fake_Kp, fake_Vsys,
+              fake_signal_strengths = [fake_signal_strength],
+              maxIterations = maxIterations,
+              kpExtent = kpExtent, vsysExtent = vsysExtent,
+              verbose = verbose, **kwargs)
+
+def optimizeSysrem(planet, orders, dataPaths, fake_Kp, fake_Vsys,
+                   fake_signal_strength, maxIterations = 10,
+                   kpExtent = 2, vsysExtent = 4, dates=None,
+                   cores = 1, verbose = False, write=False, **kwargs
+):
+  orb_params, all_dates, dataPaths = setPlanet(planet, dataPaths)
+  if dates is None:
+    dates = all_dates
+  elif type(dates) is str:
+    dates = {dates: all_dates[dates]}
+  elif type(dates) is list:
+    temp = {}
+    for date in dates:
+      temp[date] = all_dates[date]
+    dates = temp
+
+  n_orders = len(orders) * len(dates)
+
+  detection_strengths = []
+
+  pool = mp.Pool(processes = cores)
+  seq = enumerate(pool.map(
+                    partial(processSysrem,
+                      planet=planet,
+                      dates=dates,
+                      orders=orders,
+                      dataPaths=dataPaths,
+                      fake_Kp=fake_Kp,
+                      fake_Vsys=fake_Vsys,
+                      fake_signal_strength=fake_signal_strength,
+                      maxIterations=maxIterations,
+                      kpExtent=kpExtent,
+                      vsysExtent=vsysExtent,
+                      verbose=(verbose>1),
+                      kwargs=kwargs),
+                    range(n_orders)))
+  if verbose:
+    pbar = tqdm(total=n_orders,desc='Optimizing Sysrem')
+
+  for i, opti in seq:
+    # CalcSysremIterations returns list by strength, take 0th
+    detection_strengths.append(np.argmax(opti[0]))
+
+    if verbose:
+      pbar.update()
+  if verbose:
+    pbar.close()
+
+  if write:
+    writeSysrem(dataPaths['planetData'], planet, dates, orders, detection_strengths)
+
+  return detection_strengths
+
 def analyzeOrder(planet = None, date = None, order = None,
                   orb_params=None, analysis_kws=None,
                   dataPaths=None, kpRange=None, verbose=False,
@@ -340,7 +407,6 @@ def analyzeOrder(planet = None, date = None, order = None,
                           kpRange, orb_params, **analysis_kws)
 
   return smudge, vsys_axis, kp_axis
-
 
 # Used for multiprocessign in analyzeData
 def processOrder(i, orders, date_kws, order_kws,
@@ -435,7 +501,6 @@ def processDate(i, dates, orders, dataPaths, verbose, orb_params,
   n = len(orders)
   date  = list(dates.keys())[int(i/n)]
   j = i%n
-
   date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
 
   return processOrder(j, orders, date_kws, order_kws, dataPaths,
@@ -507,7 +572,7 @@ def analyzePlanet(planet, orders, dataPaths, kpRange,
   return combined, commonXAxes, kpRange
 ###
 
-#-- Plotting Functions
+#-- Plotting/Writting Functions
 def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
   xlocs = [0, int(np.shape(flux)[1]/2), np.shape(flux)[1]-1]
   xlabs = wave[xlocs]
@@ -609,6 +674,37 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
     plt.savefig(saveName)
 
   plt.show()
+
+def writeSysrem(file, planet, dates, orders, sysIts):
+  # try to open file
+  try:
+    with open(file) as f:
+      data = json.load(f)
+  except (FileNotFoundError, UnicodeDecodeError, ValueError) as e:
+    print('Input file must be pre-existing valid json file.')
+    raise(e)
+
+  # Check for inconsistent values
+  if len(orders)*len(dates) != len(sysIts):
+    raise ValueError("Number of input Sysrem Iterations doesn't equal number of dates times number of orders")
+
+  n_orders = len(orders)
+
+  #Enter SysremIterations into Json
+  planetData = data[planet]
+  for i, date in enumerate(dates.keys()):
+    dateData = planetData['dates'][date]
+    for j, order in enumerate(orders):
+      k = i*n_orders + j
+      dateData['order_kws'][str(order)] = {"sysremIterations": int(sysIts[k])}
+    planetData['dates'][date] = dateData
+
+  data[planet] = planetData
+  # return data
+
+  #Write new json to file 
+  with open(file,'w') as f:
+    json.dump(data, f, indent=2, sort_keys=True)
 ###
 
 #-- Step 0: Raw Data
@@ -1329,6 +1425,9 @@ def generateSmudgePlot(data, wave, rv_params, template,
   else:
     return smudges
 
+
+#TODO
+# THIS WRONG!!!
 def combineSmudges(smudges, x_axes, out_x, normalize=True):
   retSmudge = []
   for i in range(len(smudges)):
@@ -1615,6 +1714,10 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
 def getBarycentricCorrection(times, ra, dec, raunits, obsname, chunk_size=120, **kwargs):
   # Have to split into chunks b/c webserver can only process
   # so much
+
+  # Problems with server
+  return 0
+
   bc = np.array([])
   n = len(times)
   all_i = np.arange(n)
