@@ -6,7 +6,7 @@ from scipy import ndimage as ndi
 from scipy import constants, signal, stats, interpolate, optimize
 from astropy.io import fits
 import matplotlib.pyplot as plt
-import sys
+import os, sys
 sys.path.append('..')
 from barycorr import barycorr
 
@@ -132,8 +132,9 @@ def collectOrder(dataPaths,
   return flux, error, wave, template, rv_params
 
 def prepareData(flux,
-              #Contunuum Params:
-                continuum_order = 4,
+              #Normalization Params:
+                normalization = 'subtract_row',
+                continuum_order = 0,
               #Masking Params:
                 use_time_mask = True, time_mask_cutoffs = [3,0],
                 use_wave_mask = False, wave_mask_window = 100,
@@ -201,18 +202,33 @@ def prepareData(flux,
       plt.ylim(-0.2,1.2)
       plt.show()
 
-  # Continuum Subtract Flux
-  if continuum_order != 0:
-    if verbose:
-      print("Subtracting Continuum")
-
-    flux = continuumSubtract(flux, continuum_order, verbose=superVerbose)
-
+  # Normalize Flux
+  if normalization is not None:
+    # This is wrong
+    if normalization == 'subtract_col':
+      flux = flux-np.mean(flux,1)[:,np.newaxis]
+    elif normalization == 'subtract_row':
+      flux = flux-np.mean(flux,0)
+    elif normalization == 'subtract_all':
+      flux = flux-np.mean(flux,0)
+      flux = flux-np.mean(flux,1)[:,np.newaxis]
+    elif normalization == 'divide_col':
+      flux = flux / np.mean(flux,1)[:,np.newaxis]
+    elif normalization == 'divide_row':
+      flux = flux / np.mean(flux,0)
+    elif normalization == 'divide_all':
+      flux = flux / (np.mean(flux,0) * np.mean(flux,1)[:,np.newaxis])
+      # flux = flux / np.mean(flux,1)[:,np.newaxis]
+    elif normalization == 'continuum':
+      flux = continuumSubtract(flux, continuum_order, verbose=superVerbose)  
+    else:
+      raise(KeyError('Normalization Keyword '+normalization+' invalid. Valid KWs are a combination of "subtract, divide" and "row, col, all" e.g. "subtract_row". Or "continuum", with a valid Continuum Order'))
     #pbar.update()
 
   # Apply mask to flux
   if use_time_mask or use_wave_mask:
     flux = applyMask(flux, mask)
+    # flux = flux*mask
 
     # pbar.update()
 
@@ -236,6 +252,7 @@ def calcSysremIterations(planet, date, order, dataPaths,
                         fake_signal_strengths=[1/1000],
                         maxIterations=10,
                         kpExtent = 2, vsysExtent = 4,
+                        saveEach=False,
                         verbose=False, **kwargs
 ):
   """ Computes detection strength vs number of sysrem iterations
@@ -277,7 +294,7 @@ def calcSysremIterations(planet, date, order, dataPaths,
                     returnAllSysrem=True, verbose=(verbose>1)*2, **kwargs)
 
     # Calculate the detection strength for each iteration
-    for residuals in sysremData:
+    for i, residuals in enumerate(sysremData):
       smudges, vsys_axis, kp_axis = generateSmudgePlot(residuals, wave,
                                       rv_params, template, kpRange,
                                       orb_params, retAxes=True,
@@ -288,6 +305,20 @@ def calcSysremIterations(planet, date, order, dataPaths,
       vsys_window_max = np.where(vsys_axis >= fake_Vsys + vsysExtent*1000)[0][0]
       vsys_window = vsys_axis[vsys_window_min:vsys_window_max+1]
       window = smudges[:,vsys_window_min:vsys_window_max+1]
+
+      if saveEach:
+        datePath = saveEach+date
+        orderPath = datePath+'/order_'+str(order)
+        if not os.path.isdir(datePath):
+          os.mkdir(datePath)
+        if not os.path.isdir(orderPath):
+          os.mkdir(orderPath)
+
+        plotSmudge(window, vsys_window, kpRange, 
+          title=getTitleStr(planet,date,order)+' :: '+str(i),
+          saveName=orderPath+'/'+str(i).zfill(2)+'.png',
+          targetKp=fake_Kp/1000, targetVsys=fake_Vsys/1000,close=True)
+
       
       this_ds.append(np.max(window))
 
@@ -300,7 +331,7 @@ def calcSysremIterations(planet, date, order, dataPaths,
 def processSysrem(i, planet, dates, orders, dataPaths,
                   fake_Kp, fake_Vsys, fake_signal_strength,
                   maxIterations=10, kpExtent = 2, vsysExtent = 4,
-                  verbose=False, **kwargs
+                  saveEach=None, verbose=False, kwargs=None
 ):
   n = len(orders)
   date  = list(dates.keys())[int(i/n)]
@@ -311,12 +342,13 @@ def processSysrem(i, planet, dates, orders, dataPaths,
               fake_signal_strengths = [fake_signal_strength],
               maxIterations = maxIterations,
               kpExtent = kpExtent, vsysExtent = vsysExtent,
-              verbose = verbose, **kwargs)
+              saveEach=saveEach, verbose = verbose, **kwargs)
 
 def optimizeSysrem(planet, orders, dataPaths, fake_Kp, fake_Vsys,
                    fake_signal_strength, maxIterations = 10,
                    kpExtent = 2, vsysExtent = 4, dates=None,
-                   cores = 1, verbose = False, write=False, **kwargs
+                   saveEach=None, cores = 1,
+                   verbose = False, write=False, **kwargs
 ):
   orb_params, all_dates, dataPaths = setPlanet(planet, dataPaths)
   if dates is None:
@@ -333,6 +365,9 @@ def optimizeSysrem(planet, orders, dataPaths, fake_Kp, fake_Vsys,
 
   detection_strengths = []
 
+  if verbose:
+    pbar = tqdm(total=n_orders,desc='Optimizing Sysrem')
+
   pool = mp.Pool(processes = cores)
   seq = enumerate(pool.map(
                     partial(processSysrem,
@@ -346,11 +381,10 @@ def optimizeSysrem(planet, orders, dataPaths, fake_Kp, fake_Vsys,
                       maxIterations=maxIterations,
                       kpExtent=kpExtent,
                       vsysExtent=vsysExtent,
+                      saveEach=saveEach,
                       verbose=(verbose>1),
                       kwargs=kwargs),
                     range(n_orders)))
-  if verbose:
-    pbar = tqdm(total=n_orders,desc='Optimizing Sysrem')
 
   for i, opti in seq:
     # CalcSysremIterations returns list by strength, take 0th
@@ -594,10 +628,13 @@ def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
 
   plt.show()
 
+# TODO figure out boxes center/edges thing. Figure out how dots are placed
 def plotSmudge(smudges, vsys_axis, kp_axis,
-              orb_params=None, title="",
+              orb_params=None, targetKp=None,
+              targetVsys=None, title="",
               saveName = None, cmap='viridis',
-              xlim=None, ylim=None, clim=None
+              xlim=None, ylim=None, clim=None,
+              close=False
 ):
   """ Plots a smudge Plot
   """
@@ -639,13 +676,17 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   # Plot 'true' values if they exist
   true_val_str = ""
   if orb_params is not None:
-    trueKp   = orb_params['Kp']/1000
-    trueVsys = orb_params['v_sys']/1000
-    plt.plot((trueVsys,trueVsys),(pltYs[0],pltYs[-1]),'r')
-    plt.plot((pltXs[0],pltXs[-1]),(trueKp,trueKp),'r')
+    targetKp   = orb_params['Kp']/1000
+    targetVsys = orb_params['v_sys']/1000
 
-    markYval = np.argmin(np.abs(ys - trueKp))
-    markXval = np.argmin(np.abs(xs - trueVsys))
+  if targetKp is not None:
+    plt.plot((pltXs[0],pltXs[-1]),(targetKp,targetKp),'r--')
+  if targetVsys is not None:
+    plt.plot((targetVsys,targetVsys),(pltYs[0],pltYs[-1]),'r--')
+
+  if targetKp is not None and targetVsys is not None:
+    markYval = np.argmin(np.abs(ys - targetKp))
+    markXval = np.argmin(np.abs(xs - targetVsys))
 
     true_val_str = "\nValue under cross: " + str(np.round(smudges[markYval,markXval],2))
 
@@ -669,11 +710,23 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   else:
     plt.ylim(np.min(kp_axis)/1000,np.max(kp_axis)/1000)
 
+  # Allow mouseover to display Z value
+  def fmt(x, y):
+    col = np.argmin(np.abs(pltXs-x))
+    row = np.argmin(np.abs(pltYs-y))
+    z = smudges[row,col]
+    return 'x=%1.1f, y=%1.1f, z=%1.2f' % (x, y, z)
+
+  plt.gca().format_coord = fmt
+
   plt.tight_layout()
   if saveName is not None:
     plt.savefig(saveName)
 
   plt.show()
+
+  if close:
+    plt.close()
 
 def writeSysrem(file, planet, dates, orders, sysIts):
   # try to open file
@@ -705,6 +758,9 @@ def writeSysrem(file, planet, dates, orders, sysIts):
   #Write new json to file 
   with open(file,'w') as f:
     json.dump(data, f, indent=2, sort_keys=True)
+
+def getTitleStr(planet,date,order):
+  return str(planet)+' '+str(date)+' order-'+str(order)
 ###
 
 #-- Step 0: Raw Data
@@ -1425,9 +1481,6 @@ def generateSmudgePlot(data, wave, rv_params, template,
   else:
     return smudges
 
-
-#TODO
-# THIS WRONG!!!
 def combineSmudges(smudges, x_axes, out_x, normalize=True):
   retSmudge = []
   for i in range(len(smudges)):
@@ -1442,7 +1495,7 @@ def combineSmudges(smudges, x_axes, out_x, normalize=True):
 
   retSmudge = np.sum(retSmudge,0)
   if normalize:
-    retSmudge = retSmudge/np.apply_along_axis(percStd,0,retSmudge)
+    retSmudge = retSmudge/np.apply_along_axis(percStd,1,retSmudge)[:,np.newaxis]
   return retSmudge
 ###
 
@@ -1498,6 +1551,12 @@ def interpolateTemplate(templateData, wave):
 
   template_interp = interpolate.splrep(t_wave,t_flux)
   return interpolate.splev(wave, template_interp)
+
+def getTemplate(planet, dataPaths):
+  setPlanet(planet,dataPaths)
+  templateFile = dataPaths['templateDir']+dataPaths['templateName']
+  template = readFile(templateFile)
+  return template['wavelengths']/10000, template['flux']
 ###
 
 '''
@@ -1669,7 +1728,7 @@ def percStd(data):
   # w = w-180 equal to rv = -rv
   # switch to rv = -rv
 def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
-        vectorizeFSolve = False, **kwargs
+        vectorizeFSolve = False, returnPhase=False, **kwargs
 ):
   """
   Computes RV from given model, barycentric velocity
@@ -1688,6 +1747,9 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
   """
   w = np.deg2rad(w_deg-180)
   mean_anomaly = ((2*np.pi)/P * (times - t0)) % (2*np.pi)
+
+  if returnPhase:
+    return mean_anomaly
 
   if not vectorizeFSolve:
     try:
@@ -1714,9 +1776,6 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
 def getBarycentricCorrection(times, ra, dec, raunits, obsname, chunk_size=120, **kwargs):
   # Have to split into chunks b/c webserver can only process
   # so much
-
-  # Problems with server
-  return 0
 
   bc = np.array([])
   n = len(times)
