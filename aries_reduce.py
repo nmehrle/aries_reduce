@@ -84,9 +84,9 @@ from functools import partial
 ################################################################
 # data = '2016oct15a' # HD187123b
 # data = '2016oct15b' # WASP-33
-# data = '2016oct19' # WASP-33
+data = '2016oct19' # WASP-33
 # data = '2016oct20b' # WASP-33
-data = '2016oct17' #Ups And
+# data = '2016oct17' #Ups And
 
 # Optional change in directory structure for Exobox
 local = False
@@ -110,6 +110,7 @@ processTarg = True
 # find target aperatures from full data list.
 # Should only need to be run once for each dataset
 idTargAperatures = True
+upsampleData     = False
 
 # SaveAsPickleFiles
 # Recommended to use the python 3 routine pickler.py
@@ -167,8 +168,8 @@ if local:
     _corquad = ns._home+'/documents/science/codes/corquad/corquad.e'
     _obs_db = './obsdb.json'
 else:
-    _raw  = "/dash/exobox/proj/pcsa/data/raw/"  + dir_data + "/"
-    _proc = "/dash/exobox/proj/pcsa/data/proc/" + data + "/"
+    _raw  = "/dash/exobox/proj/pcsa/data/ARIES/raw/"  + dir_data + "/"
+    _proc = "/dash/exobox/proj/pcsa/data/ARIES/proc/" + data + "/"
     _corquad = "/dash/exobox/code/python/nmehrle/corquad/corquad.e"
     _iraf = "/dash/exobox/code/python/nmehrle/iraf"
     telluric_list = '/dash/exobox/code/python/nmehrle/telluric_lines/hk_band_lines.dat'
@@ -747,13 +748,12 @@ if procData:
     ##########################################
 
     if processTarg:
+        _targap  = _proc+prefn+"_targap"
+        _targaps = _proc+prefn+"_targaps"
 
         if idTargAperatures:
             # We take the median dataFrame and identify/trace aperatures on it
             # We then pass this as a reference to apall on all data frames
-            _targap  = _proc+prefn+"_targap"
-            _targaps = _proc+prefn+"_targaps"
-
             ir.imdelete(_targap)
             ir.imdelete(_targaps)
             ir.imcombine("@"+fullproctarg, output=_targap, combine="average",reject="avsigclip", sigmas=_targaps, scale="none", weight="median", bpmasks="")
@@ -816,15 +816,20 @@ if procData:
         pbar.close()
         if verbose:  print "Done extracting spectra from target stars!"
 
-        # Sample each aperture so that they all have equal pixel widths
-        #   and equal logarithmic wavelength coverage:
+        # Uses the before identified wavelength solution to fit wavelengths to @spectarg
+        # Saves to ir database _wldat
         ir.ecreidentify('@'+spectarg, meancal, database=_wldat, refit='no', shift=0)
 
+        # Reads in wavelength (dispersion) solution from database and evaluates
+        # w is full wavelength solution for meancal
         disp_soln = ns.getdisp(_wldat + os.sep + 'ec' + meancal)
-
         w = ns.dispeval(disp_soln[0], disp_soln[1], disp_soln[2], shift =disp_soln[3])
         w = w[::-1]
-        #w_interp = ns.wl_grid(w, dispersion, method='linear')
+
+        if upsampleData:
+            interp_suffix = 'int'
+        else:
+            interp_suffix = 'w'
         w_interp = pyfits.getdata('winterp.fits')
         hdr_interp = pyfits.getheader(meancal+postfn)
 
@@ -833,10 +838,16 @@ if procData:
 
         def interp_single_spec(i, lines):
             filename = lines[i].strip()
+
+            #get wavelength solution for this file
             disp_new = ns.getdisp(_wldat+'/ec' + filename)
             w_new    = ns.dispeval(disp_new[0], disp_new[1], disp_new[2], shift=disp_new[3])
             w_new = w_new[::-1]
-            ns.interp_spec(filename, w_new, w_interp, k=3.0, suffix='int', badval=badval, clobber=True, verbose=False)
+
+            # label wavelength and save to file
+            # upsample data if that option is passed
+            ns.interp_spec(filename, w_new, w_interp, interp=upsampleData,
+                k=3.0, suffix=interp_suffix, badval=badval, clobber=True, verbose=False)
             if saveUnInterpolated == False:
                 ir.imdelete(filename)
 
@@ -844,7 +855,7 @@ if procData:
         pool = mp.Pool(processes = num_processors)
 
         if verbose:
-            print('\nUpsampling Spectra\n')
+            print('\nLabeling Wavelengths\n')
 
         for i,_ in tqdm(enumerate(pool.imap_unordered(
                         partial(interp_single_spec,

@@ -668,9 +668,10 @@ def wl_grid(w, dispersion, method='log', mkhdr=False, verbose=False):
 
 
 
-def interp_spec(filename, w, w_interp, suffix='int', k=1, APNUM_keyword='APNUM', badval=0, clobber=True, verbose=False):
+def interp_spec(filename, w, w_interp, interp=True, suffix='int', k=1, APNUM_keyword='APNUM', badval=0, clobber=True, verbose=False):
     """ Reinterpolate a spectrum from a FITS file with a given wavelength
-        calibration into a given wavelength grid.
+        calibration into a given wavelength grid. Or write a given WL solution to a 
+        FITS file if interp=False.
           ::
 
              result = nsdata.interp_spec(filename, wl, wl_new, k=1, badval=0, clobber=True)
@@ -682,6 +683,8 @@ def interp_spec(filename, w, w_interp, suffix='int', k=1, APNUM_keyword='APNUM',
            wavelengths   -- a wavelength map of the FITS files to be reinterpolated
 
            wl_new        -- the new wavelength map (preferably from nsdata.wl_grid)
+
+           interp        -- whether or not to interpolate the spectra
 
         :Output:
            result        -- 0 if something went wrong; 1 otherwise.
@@ -773,29 +776,38 @@ def interp_spec(filename, w, w_interp, suffix='int', k=1, APNUM_keyword='APNUM',
             w        = w[order_numbers]
 
         # Interpolate
-        n_w = w.size/len(w)
-        s_interp = zeros([n_bands+1, n_ap, size(w_interp,1)])
-        s_interp[n_bands,:,:] = w_interp
-        if verbose:
-            print "irafspectrum.shape>>" + str(irafspectrum.shape)
-            print "s_interp.shape>>" + str(s_interp.shape)
-        # ---- Reshape data; interpolate it ---
-        irafspectrum = irafspectrum.reshape(n_bands, n_ap, size(irafspectrum)/n_bands/n_ap)
+        if interp:
+          n_w = w.size/len(w)
+          s_interp = zeros([n_bands+1, n_ap, size(w_interp,1)])
+          s_interp[n_bands,:,:] = w_interp
+          if verbose:
+              print "irafspectrum.shape>>" + str(irafspectrum.shape)
+              print "s_interp.shape>>" + str(s_interp.shape)
+          # ---- Reshape data; interpolate it ---
+          irafspectrum = irafspectrum.reshape(n_bands, n_ap, size(irafspectrum)/n_bands/n_ap)
 
-        for i_band in range(n_bands):
-            for i_ap in range(n_ap):
-                spec = irafspectrum[i_band,i_ap,:]
-                spline = interpolate.UnivariateSpline(w[i_ap,:], spec, s=0.0, k=k)
-                s_interp[i_band,i_ap,:] = spline(w_interp[i_ap,:])
-                
-                out_of_range = find(w_interp[i_ap,:]>w[i_ap,:].max())
-                s_interp[i_band,i_ap,out_of_range] = badval
-                
-        # ---  Write data to new FITS file. ---
-        irafheader['BANDID'+str(n_bands+1)] = 'lambda - reinterpolated wavelengths (IJC)'
-        irafheader['WLINTERP'] =  'Reinterpolated! (IJC)'
-        irafheader['BADVAL'] = badval
-        pyfits.writeto(filename.replace('.fits','')+suffix+'.fits', s_interp, header=irafheader, overwrite=clobber, output_verify='ignore')
+          for i_band in range(n_bands):
+              for i_ap in range(n_ap):
+                  spec = irafspectrum[i_band,i_ap,:]
+                  spline = interpolate.UnivariateSpline(w[i_ap,:], spec, s=0.0, k=k)
+                  s_interp[i_band,i_ap,:] = spline(w_interp[i_ap,:])
+                  
+                  out_of_range = find(w_interp[i_ap,:]>w[i_ap,:].max())
+                  s_interp[i_band,i_ap,out_of_range] = badval
+                  
+          # ---  Write data to new FITS file. ---
+          irafheader['BANDID'+str(n_bands+1)] = 'lambda - reinterpolated wavelengths (IJC)'
+          irafheader['WLINTERP'] =  'Reinterpolated! (IJC)'
+          irafheader['BADVAL'] = badval
+          pyfits.writeto(filename.replace('.fits','')+suffix+'.fits', s_interp, header=irafheader, overwrite=clobber, output_verify='ignore')
+        else:
+          output = zeros([n_bands+1, n_ap, size(w,1)])
+          output[:n_bands] = irafspectrum
+          output[n_bands] = w
+
+          irafheader['BANDID'+str(n_bands+1)] = 'lambda - wavelength solution'
+          pyfits.writeto(filename.replace('.fits','')+suffix+'.fits', output, header=irafheader, overwrite=clobber, output_verify='ignore')
+
 
 
     return goodResult
