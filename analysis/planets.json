@@ -1,31 +1,64 @@
 {
-  "ups-and": {
-    "orb_params": {
-      "t0"    : 2450034.06,
-      "P"     : 4.61711,
-      "w_deg" : 44.519, 
-      "e"     : 0.012, 
-      "comment": {
-        "Kp"    : 55000, 
-        "v_sys" : -28590
+  "hd-187123": {
+    "dates": {
+      "2016oct15a": {
+        "default_kws": {
+          "sysremIterations": 6
+        },
+        "obsname": "mmto",
+        "order_kws": {},
+        "raunits": "hours"
+      },
+      "2016oct21": {
+        "default_kws": {
+          "sysremIterations": 6
+        },
+        "obsname": "mmto",
+        "order_kws": {},
+        "raunits": "hours"
       }
     },
+    "orb_params": {
+      "Kp": 50000,
+      "P": 3.0965828,
+      "e": 0.01,
+      "t0": 52111.7,
+      "v_sys": 0,
+      "w_deg": 25
+    },
+    "template": "upsand.pickle"
+  },
+  "hd-189733": {
+    "dates": {
+      "2016oct18a": {},
+      "2016oct20a": {}
+    },
+    "orb_params": {}
+  },
+  "kelt-7": {
+    "dates": {
+      "2016oct18b": {}
+    },
+    "orb_params": {}
+  },
+  "ups-and": {
     "dates": {
       "2016oct16": {
-        "obsname": "mmto",
-        "raunits": "hours",
         "default_kws": {
-          "discard_rows": [-1],
+          "discard_rows": [
+            -1
+          ],
           "sysremIterations": 7
         },
-        "order_kws": {}
+        "obsname": "mmto",
+        "order_kws": {},
+        "raunits": "hours"
       },
       "2016oct17": {
-        "obsname": "mmto",
-        "raunits": "hours",
         "default_kws": {
           "sysremIterations": 7
         },
+        "obsname": "mmto",
         "order_kws": {
           "0": {
             "sysremIterations": 9
@@ -35,97 +68,95 @@
           },
           "2": {
             "sysremIterations": 2,
-            "time_mask_cutoffs": [3,0]
+            "time_mask_cutoffs": [
+              3,
+              0
+            ]
           },
           "3": {
             "sysremIterations": 7
           }
-        }
+        },
+        "raunits": "hours"
       }
+    },
+    "orb_params": {
+      "P": 4.61711,
+      "comment": {
+        "Kp": 55000,
+        "v_sys": -28590
+      },
+      "e": 0.012,
+      "t0": 2450034.06,
+      "w_deg": 44.519
     },
     "template": "upsand-noinvert.pickle"
   },
   "wasp-33": {
-    "orb_params": {
-      "t0"    : 2454590.17936,
-      "P"     : 1.21986967,
-      "w_deg" : 90,
-      "e"     : 0,
-      "Kp"    : 239000,
-      "v_sys" : -1500  
-    },
-    "dates" : {
+    "dates": {
       "2016oct15b": {
-        "obsname": "mmto",
-        "raunits": "hours",
         "default_kws": {
-          "discard_rows": [-1],
+          "discard_rows": [
+            -1
+          ],
           "sysremIterations": 5
         },
-        "order_kws": {}
+        "obsname": "mmto",
+        "order_kws": {
+          "0": {
+            "sysremIterations": 10
+          },
+          "1": {
+            "sysremIterations": 15
+          },
+          "2": {
+            "sysremIterations": 0
+          }
+        },
+        "raunits": "hours"
       },
       "2016oct19": {
-        "obsname": "mmto",
-        "raunits": "hours",
         "default_kws": {
-          "discard_rows": [-1],
+          "discard_rows": [
+            -1
+          ],
           "sysremIterations": 6
         },
-        "order_kws": {}
+        "obsname": "mmto",
+        "order_kws": {
+          "0": {
+            "sysremIterations": 9
+          },
+          "1": {
+            "sysremIterations": 4
+          },
+          "2": {
+            "sysremIterations": 6
+          }
+        },
+        "raunits": "hours"
       },
       "2016oct20b": {
-        "obsname": "mmto",
-        "raunits": "hours",
         "default_kws": {
-          "discard_rows": [61],
+          "discard_rows": [
+            61
+          ],
           "sysremIterations": 5
         },
-        "order_kws": {}
+        "obsname": "mmto",
+        "order_kws": {},
+        "raunits": "hours"
       }
     },
-    "template": "wasp33.pickle",
-    "ref"   : "http://iopscience.iop.org/article/10.3847/1538-3881/aa9433/pdf"
-  },
-  "hd-187123": {
     "orb_params": {
-      "t0"    : 52111.7,
-      "P"     : 3.0965828,
-      "w_deg" : 25,
-      "e"     : 0.01,
-      "Kp"    : 50000,
-      "v_sys" : 0  
+      "Kp": 239000,
+      "P": 1.21986967,
+      "e": 0,
+      "t0": 2454590.17936,
+      "v_sys": -1500,
+      "w_deg": 90
     },
-    "dates": {
-      "2016oct15a": {
-        "obsname": "mmto",
-        "raunits": "hours",
-        "default_kws": {
-          "sysremIterations": 6
-        },
-        "order_kws": {}
-      },
-      "2016oct21": {
-        "obsname": "mmto",
-        "raunits": "hours",
-        "default_kws": {
-          "sysremIterations": 6
-        },
-        "order_kws": {}
-      }
-    },
-    "template": "upsand.pickle"
-  },
-  "hd-189733": {
-    "orb_params": {},
-    "dates": {
-      "2016oct18a": {},
-      "2016oct20a": {}
-    }
-  },
-  "kelt-7": {
-    "orb_params": {},
-    "dates": {
-      "2016oct18b": {}
-    }
+    "ref": "http://iopscience.iop.org/article/10.3847/1538-3881/aa9433/pdf",
+    "template": "wasp33.pickle"
   }
 }
