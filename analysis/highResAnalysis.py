@@ -842,7 +842,7 @@ def getEdgeCuts(flux, neighborhood_size=30,
   n = len(smooth)
   step = np.concatenate((np.ones(n),-1*np.ones(n)))
 
-  xcor = np.correlate(smooth, step, 'valid')
+  xcor = np.correlate(smooth-np.mean(smooth), step, 'valid')
   
   # Want maxima on right -> Step Down
   # Want minima on left  -> Step Up
