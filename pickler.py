@@ -16,9 +16,10 @@ if verbose:
 
 # Computer can only handle so many open files at a time
 maxChunkSize = 123
-suffix    = 'int.fits'
-data     = '2016oct17' #wasp33
-_proc    = '/dash/exobox/proj/pcsa/data/proc/' + data + '/'
+suffix      = 'int.fits'
+data        = '2016oct15b' #wasp33
+save_suffix = '_INT.pickle'
+_proc       = '/dash/exobox/proj/pcsa/data/ARIES/proc/' + data + '/'
 
 spectarg = _proc+'spectarg'
 
@@ -88,14 +89,14 @@ for order in range(len(fluxes)):
     'waves' : np.array(waves[order])
   }
 
-  saveName = _proc+'order_'+str(order)+'.pickle'
+  saveName = _proc+'order_'+str(order)+save_suffix
 
   with open(saveName,'wb') as pf:
     pickle.dump(toPickle,pf, protocol=pickle.HIGHEST_PROTOCOL)
 
 if verbose:
   print('Writing Header')
-hdr_saveName = _proc+'allHeaders.pickle'
+hdr_saveName = _proc+'allHeaders' + save_suffix
 with open(hdr_saveName,'wb') as pf:
   pickle.dump(hdr_vals, pf, protocol=pickle.HIGHEST_PROTOCOL)
 

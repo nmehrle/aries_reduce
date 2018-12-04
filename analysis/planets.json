@@ -104,13 +104,13 @@
         "obsname": "mmto",
         "order_kws": {
           "0": {
-            "sysremIterations": 10
+            "sysremIterations": 3
           },
           "1": {
-            "sysremIterations": 15
+            "sysremIterations": 5
           },
           "2": {
-            "sysremIterations": 0
+            "sysremIterations": 2
           }
         },
         "raunits": "hours"
@@ -125,13 +125,13 @@
         "obsname": "mmto",
         "order_kws": {
           "0": {
-            "sysremIterations": 9
+            "sysremIterations": 8
           },
           "1": {
             "sysremIterations": 4
           },
           "2": {
-            "sysremIterations": 6
+            "sysremIterations": 5
           }
         },
         "raunits": "hours"
@@ -144,7 +144,17 @@
           "sysremIterations": 5
         },
         "obsname": "mmto",
-        "order_kws": {},
+        "order_kws": {
+          "0": {
+            "sysremIterations": 7
+          },
+          "1": {
+            "sysremIterations": 15
+          },
+          "2": {
+            "sysremIterations": 15
+          }
+        },
         "raunits": "hours"
       }
     },
