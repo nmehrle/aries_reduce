@@ -248,12 +248,14 @@ def prepareData(flux,
   return flux
 
 def calcSysremIterations(planet, date, order, dataPaths,
-                        fake_Kp, fake_Vsys,
+                        target_Kp, target_Vsys,
                         fake_signal_strengths=[1/1000],
                         maxIterations=10,
                         kpExtent = 2, vsysExtent = 4,
                         saveEach=False,
-                        verbose=False, **kwargs
+                        verbose=False,
+                        inverted_template=True, 
+                        **kwargs
 ):
   """ Computes detection strength vs number of sysrem iterations
     Params: See collectData(), prepareData(), generateSmudgePlot()
@@ -262,7 +264,7 @@ def calcSysremIterations(planet, date, order, dataPaths,
 
   # Collect Data
   dataPaths, orb_params, analysis_kws =\
-          setObs(planet, date, order, dataPaths)
+          setObs(planet, date, order, dataPaths, inverted_template=inverted_template)
   analysis_kws.update(kwargs)
 
   flux, error, wave, template, rv_params =\
@@ -272,9 +274,9 @@ def calcSysremIterations(planet, date, order, dataPaths,
   #           **analysis_kws)
 
   # Injected KpValue
-  kpRange = np.arange(-kpExtent, kpExtent)*1000 + fake_Kp
+  kpRange = np.arange(-kpExtent, kpExtent)*1000 + target_Kp
   if len(kpRange) == 0:
-    kpRange = np.array([fake_Kp])
+    kpRange = np.array([target_Kp])
   all_detection_strengths = []
 
   for signal_strength in fake_signal_strengths:
@@ -285,7 +287,7 @@ def calcSysremIterations(planet, date, order, dataPaths,
     this_ds = []
 
     fake_signal = injectFakeSignal(flux, wave, rv_params, orb_params,
-                    fake_Kp, fake_Vsys, signal_strength, 
+                    target_Kp, target_Vsys, signal_strength, 
                     dataPaths=dataPaths, verbose=(verbose>1)*2, doAlert=False)
 
     # Calculate maxIterations sysrem iterations
@@ -294,15 +296,20 @@ def calcSysremIterations(planet, date, order, dataPaths,
                     returnAllSysrem=True, verbose=(verbose>1)*2, **kwargs)
 
     # Calculate the detection strength for each iteration
-    for i, residuals in enumerate(sysremData):
+    if verbose>1:
+      seq = enumerate(tqdm(sysremData, desc='Aligning Xcors'))
+    else:
+      seq = enumerate(sysremData)
+
+    for i, residuals in seq:
       smudges, vsys_axis, kp_axis = generateSmudgePlot(residuals, wave,
                                       rv_params, template, kpRange,
                                       orb_params, retAxes=True,
-                                      verbose=(verbose>1)*2,
+                                      verbose=(verbose>2)*2,
                                       **kwargs)
       
-      vsys_window_min = np.where(vsys_axis <= fake_Vsys - vsysExtent*1000)[0][-1]
-      vsys_window_max = np.where(vsys_axis >= fake_Vsys + vsysExtent*1000)[0][0]
+      vsys_window_min = np.where(vsys_axis <= target_Vsys - vsysExtent*1000)[0][-1]
+      vsys_window_max = np.where(vsys_axis >= target_Vsys + vsysExtent*1000)[0][0]
       vsys_window = vsys_axis[vsys_window_min:vsys_window_max+1]
       window = smudges[:,vsys_window_min:vsys_window_max+1]
 
@@ -317,7 +324,7 @@ def calcSysremIterations(planet, date, order, dataPaths,
         plotSmudge(window, vsys_window, kpRange, 
           title=getTitleStr(planet,date,order)+' :: '+str(i),
           saveName=orderPath+'/'+str(i).zfill(2)+'.png',
-          targetKp=fake_Kp/1000, targetVsys=fake_Vsys/1000,close=True)
+          target_Kp=target_Kp/1000, target_Vsys=target_Vsys/1000,close=True)
 
       
       this_ds.append(np.max(window))
@@ -329,7 +336,7 @@ def calcSysremIterations(planet, date, order, dataPaths,
   return np.array(all_detection_strengths)
 
 def processSysrem(i, planet, dates, orders, dataPaths,
-                  fake_Kp, fake_Vsys, fake_signal_strength,
+                  target_Kp, target_Vsys, fake_signal_strength,
                   maxIterations=10, kpExtent = 2, vsysExtent = 4,
                   saveEach=None, verbose=False, kwargs=None
 ):
@@ -338,18 +345,22 @@ def processSysrem(i, planet, dates, orders, dataPaths,
   order = orders[i%n]
 
   return calcSysremIterations(planet, date, order, dataPaths,
-              fake_Kp, fake_Vsys,
+              target_Kp, target_Vsys,
               fake_signal_strengths = [fake_signal_strength],
               maxIterations = maxIterations,
               kpExtent = kpExtent, vsysExtent = vsysExtent,
               saveEach=saveEach, verbose = verbose, **kwargs)
 
-def optimizeSysrem(planet, orders, dataPaths, fake_Kp, fake_Vsys,
+def optimizeSysrem(planet, orders, dataPaths, target_Kp, target_Vsys,
                    fake_signal_strength, maxIterations = 10,
-                   kpExtent = 2, vsysExtent = 4, dates=None,
+                   kpExtent = 5, vsysExtent = 8, dates=None,
                    saveEach=None, cores = 1,
                    verbose = False, write=False, **kwargs
 ):
+  if type(orders) == int:
+    orders = [orders]
+  
+  #TODO include option for negative
   orb_params, all_dates, dataPaths = setPlanet(planet, dataPaths)
   if dates is None:
     dates = all_dates
@@ -375,14 +386,14 @@ def optimizeSysrem(planet, orders, dataPaths, fake_Kp, fake_Vsys,
                       dates=dates,
                       orders=orders,
                       dataPaths=dataPaths,
-                      fake_Kp=fake_Kp,
-                      fake_Vsys=fake_Vsys,
+                      target_Kp=target_Kp,
+                      target_Vsys=target_Vsys,
                       fake_signal_strength=fake_signal_strength,
                       maxIterations=maxIterations,
                       kpExtent=kpExtent,
                       vsysExtent=vsysExtent,
                       saveEach=saveEach,
-                      verbose=(verbose>1),
+                      verbose=max(0,verbose-1),
                       kwargs=kwargs),
                     range(n_orders)))
 
@@ -403,6 +414,7 @@ def optimizeSysrem(planet, orders, dataPaths, fake_Kp, fake_Vsys,
 def analyzeOrder(planet = None, date = None, order = None,
                   orb_params=None, analysis_kws=None,
                   dataPaths=None, kpRange=None, verbose=False,
+                  inverted_template=True,
                   **kwargs
 ):
   '''
@@ -418,7 +430,7 @@ def analyzeOrder(planet = None, date = None, order = None,
   # If planet is specified, assume input option A
   if planet is not None:
     dataPaths, orb_params, analysis_kws =\
-          setObs(planet, date, order, dataPaths)
+          setObs(planet, date, order, dataPaths, inverted_template=inverted_template)
 
   kwargs['verbose'] = verbose
   analysis_kws.update(kwargs)
@@ -630,10 +642,10 @@ def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
 
 # TODO figure out boxes center/edges thing. Figure out how dots are placed
 def plotSmudge(smudges, vsys_axis, kp_axis,
-              orb_params=None, targetKp=None,
-              targetVsys=None, title="",
+              orb_params=None, target_Kp=None,
+              target_Vsys=None, title="",
               saveName = None, cmap='viridis',
-              xlim=None, ylim=None, clim=None,
+              xlim=[-100,100], ylim=None, clim=None,
               close=False
 ):
   """ Plots a smudge Plot
@@ -676,17 +688,17 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   # Plot 'true' values if they exist
   true_val_str = ""
   if orb_params is not None:
-    targetKp   = orb_params['Kp']/1000
-    targetVsys = orb_params['v_sys']/1000
+    target_Kp   = orb_params['Kp']/1000
+    target_Vsys = orb_params['v_sys']/1000
 
-  if targetKp is not None:
-    plt.plot((pltXs[0],pltXs[-1]),(targetKp,targetKp),'r--')
-  if targetVsys is not None:
-    plt.plot((targetVsys,targetVsys),(pltYs[0],pltYs[-1]),'r--')
+  if target_Kp is not None:
+    plt.plot((pltXs[0],pltXs[-1]),(target_Kp,target_Kp),'r--')
+  if target_Vsys is not None:
+    plt.plot((target_Vsys,target_Vsys),(pltYs[0],pltYs[-1]),'r--')
 
-  if targetKp is not None and targetVsys is not None:
-    markYval = np.argmin(np.abs(ys - targetKp))
-    markXval = np.argmin(np.abs(xs - targetVsys))
+  if target_Kp is not None and target_Vsys is not None:
+    markYval = np.argmin(np.abs(ys - target_Kp))
+    markXval = np.argmin(np.abs(xs - target_Vsys))
 
     true_val_str = "\nValue under cross: " + str(np.round(smudges[markYval,markXval],2))
 
@@ -764,8 +776,11 @@ def getTitleStr(planet,date,order):
 ###
 
 #-- Step 0: Raw Data
-def setObs(planet, date, order, dataPaths):
-  orb_params, dates, dataPaths = setPlanet(planet, dataPaths)
+def setObs(planet, date, order, dataPaths, inverted_template=True):
+  """
+    dataPaths, orb_params, analysis_kws = setObs(planet, date, order, dataPaths)
+  """
+  orb_params, dates, dataPaths = setPlanet(planet, dataPaths, inverted_template=inverted_template)
   date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
   analysis_kws, dataPaths = setOrder(order, date_kws, order_kws, dataPaths)
   return dataPaths, orb_params, analysis_kws
@@ -782,13 +797,21 @@ def getDates(planet, dataPaths):
   dates = data['dates']
   return list(dates.keys())
 
-def setPlanet(planet, dataPaths, verbose=False):
+def setPlanet(planet, dataPaths, verbose=False, inverted_template=True):
   with open(dataPaths['planetData']) as f:
       data = json.load(f)
   data = data[planet]
   orb_params   = data['orb_params']
   dates        = data['dates']
-  dataPaths['templateName'] = data['template']
+  tem = data['template']
+
+  if type(tem) == dict:
+    if inverted_template:
+      dataPaths['templateName'] = tem['invert']
+    else:
+      dataPaths['templateName'] = tem['noinvert']
+  else:
+    dataPaths['templateName'] = tem
     
   if verbose:
     print('Possible Dates for '+planet+' are '+str([key for key in dates.keys()])+'.')
