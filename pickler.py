@@ -16,9 +16,9 @@ if verbose:
 
 # Computer can only handle so many open files at a time
 maxChunkSize = 123
-suffix      = 'int.fits'
-data        = '2016oct15b' #wasp33
-save_suffix = '_INT.pickle'
+suffix      = 'w.fits'
+data        = '2016oct17' #ups-and
+save_suffix = '.pickle'
 _proc       = '/dash/exobox/proj/pcsa/data/ARIES/proc/' + data + '/'
 
 spectarg = _proc+'spectarg'

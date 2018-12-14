@@ -85,8 +85,9 @@ from functools import partial
 # data = '2016oct15a' # HD187123b
 # data = '2016oct15b' # WASP-33
 # data = '2016oct19' # WASP-33
-data = '2016oct20b' # WASP-33
-# data = '2016oct17' #Ups And
+# data = '2016oct20b' # WASP-33
+# data = '2016oct16' #Ups And
+data = '2016oct17' #Ups And
 
 # Optional change in directory structure for Exobox
 local = False
@@ -666,6 +667,8 @@ if preProcData:
             num_processors=num_processors, saveBadMask=saveBadMask, tryIRccdproc=False, badPixMethod='linear')
 
     if preProcTarg:
+        if verbose:
+          print('-------------writing exptime----------------')
         ns.write_exptime(rawtarg, itime=itime)
 
         ns.preprocess('@'+rawtarg, '@'+proctarg, qfix=qfix,

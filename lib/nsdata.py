@@ -1837,7 +1837,33 @@ def preprocess(*args, **kw):
     return
 
 def preprocessEach(i,inLines,outLines,kw):
-    preprocess(inLines[i].strip(), outLines[i].strip(), **kw)
+    try:
+      preprocess(inLines[i].strip(), outLines[i].strip(), **kw)
+    except Exception as e:
+      print('-----------------------------')
+      print('-----------------------------')
+      print('-----------------------------')
+      print('Failed on '+str(i)+', with exception:')
+      print(e)
+      print(' . Retrying')
+      print('-----------------------------')
+      print('-----------------------------')
+      print('-----------------------------')
+      preprocessEach(i,inLines,outLines,kw)
+    except KeyboardInterrupt as e:
+      raise(e)
+    except:
+      print('-----------------------------')
+      print('-----------------------------')
+      print('-----------------------------')
+      print('Failed on '+str(i)+', with unknown exception')
+      print('Retrying')
+      print('-----------------------------')
+      print('-----------------------------')
+      print('-----------------------------')
+      preprocessEach(i,inLines,outLines,kw)
+
+      # preprocessEach(i,inLines,outLines,kw)
 
 def interpolateFlatFrameFromAngle(allflats, altitude, numToInterpolate=3):
     """ Generates flat field frame for a given altitude from dict of
@@ -3360,7 +3386,7 @@ def correct_aries_crosstalk(input, **kw):
     if not os.path.isfile(output):
         print "WARNING, did not find expected output file '%s'. Something went wrong!" % output
 
-    pyhdr = pyfits.open(output)
+    pyhdr = pyfits.open(output, ignore_missing_end=True)
     pyhdr[0].header['quadnois'] = 'ARIES crosstalk fixed by nsdata.correct_aries_crosstalk'
     pyhdr.writeto(output, overwrite=True, output_verify='silentfix')
 
