@@ -51,7 +51,32 @@
           "sysremIterations": 7
         },
         "obsname": "mmto",
-        "order_kws": {},
+        "order_kws": {
+          "0": {
+            "inverted": {
+              "sysremIterations": 10
+            },
+            "non-inverted": {
+
+            }
+          },
+          "1": {
+            "inverted": {
+              "sysremIterations": 9
+            },
+            "non-inverted": {
+
+            }
+          },
+          "2": {
+            "inverted": {
+              "sysremIterations": 9
+            },
+            "non-inverted": {
+
+            }
+          }
+        },
         "raunits": "hours"
       },
       "2016oct17": {
@@ -67,7 +92,7 @@
             "sysremIterations": 8
           },
           "2": {
-            "sysremIterations": 2,
+            "sysremIterations": 10,
             "time_mask_cutoffs": [
               3,
               0
@@ -81,16 +106,17 @@
       }
     },
     "orb_params": {
+      "Kp": 55000,
       "P": 4.61711,
-      "comment": {
-        "Kp": 55000,
-        "v_sys": -28590
-      },
       "e": 0.012,
       "t0": 2450034.06,
+      "v_sys": -28590,
       "w_deg": 44.519
     },
-    "template": "upsand-noinvert.pickle"
+    "template": {
+      "inverted": "upsand-invert.pickle",
+      "non-inverted": "upsand-noinvert.pickle"
+    }
   },
   "wasp-33": {
     "dates": {
