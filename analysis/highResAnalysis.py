@@ -410,7 +410,7 @@ def optimizeSysrem(planet, orders, dataPaths, target_Kp, target_Vsys,
     pbar.close()
 
   if write:
-    writeSysrem(dataPaths['planetData'], planet, dates, orders, detection_strengths)
+    writeSysrem(dataPaths['planetData'], planet, dates, orders, detection_strengths, templateName)
 
   return detection_strengths
 
@@ -547,7 +547,7 @@ def analyzeDate(planet = None, date = None, orders = None,
   return combined, commonXAxes, kpRange
 
 def processDate(i, dates, orders, dataPaths, verbose, orb_params, 
-          kpRange, templateName=templateName, kwargs
+          kpRange, templateName, kwargs
 ):
   n = len(orders)
   date  = list(dates.keys())[int(i/n)]
@@ -747,7 +747,7 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   if close:
     plt.close()
 
-def writeSysrem(file, planet, dates, orders, sysIts):
+def writeSysrem(file, planet, dates, orders, sysIts, templateName=None):
   # try to open file
   try:
     with open(file) as f:
@@ -768,7 +768,18 @@ def writeSysrem(file, planet, dates, orders, sysIts):
     dateData = planetData['dates'][date]
     for j, order in enumerate(orders):
       k = i*n_orders + j
-      dateData['order_kws'][str(order)] = {"sysremIterations": int(sysIts[k])}
+      orderData = dateData['order_kws'][str(order)]
+
+      if templateName is None:
+        # orders not broken up by templates
+        orderData['sysremIterations'] = int(sysIts[k])
+      else:
+        if templateName not in orderData.keys():
+          orderData[templateName] = {'sysremIterations': int(sysIts[k])}
+        else:
+          orderData[templateName]['sysremIterations'] = int(sysIts[k])
+
+      dateData['order_kws'][str(order)] = orderData
     planetData['dates'][date] = dateData
 
   data[planet] = planetData

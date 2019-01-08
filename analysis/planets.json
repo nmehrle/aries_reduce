@@ -54,10 +54,10 @@
         "order_kws": {
           "0": {
             "inverted": {
-              "sysremIterations": 10
+              "sysremIterations": 6
             },
             "non-inverted": {
-
+              "sysremIterations": 15
             }
           },
           "1": {
@@ -65,15 +65,15 @@
               "sysremIterations": 9
             },
             "non-inverted": {
-
+              "sysremIterations": 9
             }
           },
           "2": {
             "inverted": {
-              "sysremIterations": 9
+              "sysremIterations": 1
             },
             "non-inverted": {
-
+              "sysremIterations": 15
             }
           }
         },
