@@ -57,7 +57,7 @@
               "sysremIterations": 6
             },
             "non-inverted": {
-              "sysremIterations": 15
+              "sysremIterations": 9
             }
           },
           "1": {
@@ -65,7 +65,7 @@
               "sysremIterations": 9
             },
             "non-inverted": {
-              "sysremIterations": 9
+              "sysremIterations": 8
             }
           },
           "2": {
@@ -73,7 +73,7 @@
               "sysremIterations": 1
             },
             "non-inverted": {
-              "sysremIterations": 15
+              "sysremIterations": 3
             }
           }
         },

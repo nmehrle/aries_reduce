@@ -359,7 +359,7 @@ def processSysrem(i, planet, dates, orders, dataPaths,
 def optimizeSysrem(planet, orders, dataPaths, target_Kp, target_Vsys,
                    fake_signal_strength, maxIterations = 10,
                    kpExtent = 5, vsysExtent = 8, dates=None,
-                   saveEach=None, cores = 1,
+                   saveEach=None, saveTrend=None, cores = 1,
                    verbose = False, write=False, 
                    templateName=None,
                    **kwargs
@@ -400,14 +400,36 @@ def optimizeSysrem(planet, orders, dataPaths, target_Kp, target_Vsys,
                       kwargs=kwargs),
                     range(n_orders)))
 
+  trends = []
   for i, opti in seq:
     # CalcSysremIterations returns list by strength, take 0th
     detection_strengths.append(np.argmax(opti[0]))
+    trends.append(opti[0])
 
     if verbose:
       pbar.update()
   if verbose:
     pbar.close()
+
+  if saveTrend is not None:
+    if not os.path.isdir(saveTrend):
+      os.mkdir(saveTrend)
+
+    for d in range(len(dates)):
+      plt.figure()
+
+      for o in range(len(orders)):
+        k = d*len(orders) + o
+
+        plt.plot(trends[k], label='order: '+str(o))
+
+      plt.legend()
+      if templateName is None:
+        plt.title('SysremIterations: '+planet+', '+str(dates[d]))
+        plt.savefig(saveTrend+planet+'_'+str(dates[d])+'_sysIts.png')
+      else:
+        plt.title('SysremIterations: '+planet+', '+str(dates[d])+', template: '+templateName)
+        plt.savefig(saveTrend+planet+'_'+str(dates[d])+'_'+templateName+'_sysIts.png')
 
   if write:
     writeSysrem(dataPaths['planetData'], planet, dates, orders, detection_strengths, templateName)
