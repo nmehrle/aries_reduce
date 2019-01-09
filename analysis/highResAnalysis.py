@@ -1183,7 +1183,7 @@ def continuumSubtract(data, order, error=None, verbose=False):
   return np.array(result)
 
 def sysrem(data, error, 
-          ncyles = 1,
+          ncycles = 1,
           initialGuess = None,
           maxIterations = 200,
           maxError = 0.001,
@@ -1206,7 +1206,7 @@ def sysrem(data, error,
   if verbose:
     print('Starting Sysrem')
 
-  for cycle in range(ncyles):
+  for cycle in range(ncycles):
     if verbose:
       print('Starting Cycle '+str(cycle+1),flush=True)
       pbar = tqdm(total=100, desc='Cycle '+str(cycle+1))
