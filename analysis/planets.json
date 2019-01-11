@@ -5,7 +5,7 @@
         "default_kws": {
           "sysremIterations": 6
         },
-        "obsname": "mmto",
+        "obsname": "mmt",
         "order_kws": {},
         "raunits": "hours"
       },
@@ -13,7 +13,7 @@
         "default_kws": {
           "sysremIterations": 6
         },
-        "obsname": "mmto",
+        "obsname": "mmt",
         "order_kws": {},
         "raunits": "hours"
       }
@@ -42,6 +42,7 @@
     "orb_params": {}
   },
   "ups-and": {
+    "planetName": "upsilon andromedae",
     "dates": {
       "2016oct16": {
         "default_kws": {
@@ -50,7 +51,7 @@
           ],
           "sysremIterations": 7
         },
-        "obsname": "mmto",
+        "obsname": "mmt",
         "order_kws": {
           "0": {
             "inverted": {
@@ -83,7 +84,7 @@
         "default_kws": {
           "sysremIterations": 7
         },
-        "obsname": "mmto",
+        "obsname": "mmt",
         "order_kws": {
           "0": {
             "sysremIterations": 9
@@ -119,6 +120,7 @@
     }
   },
   "wasp-33": {
+    "planetName": "wasp 33",
     "dates": {
       "2016oct15b": {
         "default_kws": {
@@ -127,7 +129,7 @@
           ],
           "sysremIterations": 5
         },
-        "obsname": "mmto",
+        "obsname": "mmt",
         "order_kws": {
           "0": {
             "sysremIterations": 3
@@ -148,7 +150,7 @@
           ],
           "sysremIterations": 6
         },
-        "obsname": "mmto",
+        "obsname": "mmt",
         "order_kws": {
           "0": {
             "sysremIterations": 8
@@ -169,7 +171,7 @@
           ],
           "sysremIterations": 5
         },
-        "obsname": "mmto",
+        "obsname": "mmt",
         "order_kws": {
           "0": {
             "sysremIterations": 7

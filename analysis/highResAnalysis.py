@@ -7,8 +7,10 @@ from scipy import constants, signal, stats, interpolate, optimize
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import os, sys
-sys.path.append('..')
-from barycorr import barycorr
+
+from barycorrpy.utils import get_stellar_data
+from astropy.time import Time
+import barycorrpy
 
 def type_of_script():
     try:
@@ -55,7 +57,7 @@ def collectOrder(dataPaths,
                   padLen = 50, peak_half_width = 3,
                   upSampleFactor = 1000,
                   plotCuts = False,
-                  obsname = None, raunits = None,
+                  obsname = None, planetName = '',
                   verbose = False,  **kwargs
 ):
   """ Collects, trims and aligns data for 1 order from 1 date
@@ -81,14 +83,12 @@ def collectOrder(dataPaths,
   del data
 
   times = np.array(headers['JD'])
-  ras   = np.array(headers['RA'])
-  decs  = np.array(headers['DEC'])
   del headers
 
   if verbose:
     print('Trimming Data')
 
-  applyRowCuts  = [times, ras, decs]
+  applyRowCuts  = [times]
   applyColCuts  = [wave]
   applyBothCuts = [error]
 
@@ -99,18 +99,16 @@ def collectOrder(dataPaths,
         neighborhood_size=trim_neighborhood_size, showPlots=plotCuts,
         figTitle = 'Date: '+dataPaths['date']+', Order: '+str(dataPaths['order']))
 
-  times, ras, decs = applyRowCuts
+  times = applyRowCuts[0]
   wave  = applyColCuts[0]
   error = applyBothCuts[0]
 
   #pbar.update()
 
   rv_params = {
-    'ra'      : ras,
-    'dec'     : decs,
-    'times'   : times,
-    'raunits' : raunits,
-    'obsname' : obsname
+    'times'      : times,
+    'obsname'    : obsname,
+    'planetName' : planetName
   }  
 
   if doAlign:
@@ -820,9 +818,11 @@ def setObs(planet, date, order, dataPaths, templateName=None):
   """
     dataPaths, orb_params, analysis_kws = setObs(planet, date, order, dataPaths)
   """
-  orb_params, dates, dataPaths = setPlanet(planet, dataPaths, templateName=templateName)
+  orb_params, dates, planetName, dataPaths = setPlanet(planet, dataPaths, templateName=templateName)
   date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
   analysis_kws, dataPaths = setOrder(order, date_kws, order_kws, dataPaths, templateName=templateName)
+
+  analysis_kws['planetName'] = planetName
   return dataPaths, orb_params, analysis_kws
 
 def getDates(planet, dataPaths):
@@ -843,6 +843,7 @@ def setPlanet(planet, dataPaths, verbose=False, templateName=None):
   data = data[planet]
   orb_params   = data['orb_params']
   dates        = data['dates']
+  planetName   = data['planetName']
   tem = data['template']
 
   if type(tem) == dict:
@@ -857,7 +858,7 @@ def setPlanet(planet, dataPaths, verbose=False, templateName=None):
   if verbose:
     print('Possible Dates for '+planet+' are '+str([key for key in dates.keys()])+'.')
     
-  return orb_params, dates, dataPaths
+  return orb_params, dates, planetName, dataPaths
 
 def setDate(date, dates, dataPaths):
   date_kws = {**dates[date]}
@@ -1859,20 +1860,14 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
 
   return velocity
 
-def getBarycentricCorrection(times, ra, dec, raunits, obsname, chunk_size=120, **kwargs):
-  # Have to split into chunks b/c webserver can only process
-  # so much
+def getBarycentricCorrection(times, planetName, obsname, **kwargs):
+  bc=[]
+  for time in times:
+    JDUTC = Time(time, format='jd',scale='utc')
+    output=  barycorrpy.get_BC_vel(JDUTC, starname=planetName, obsname=obsname)
+    bc.append(output[0][0])
 
-  bc = np.array([])
-  n = len(times)
-  all_i = np.arange(n)
-  chunks = [all_i[i:i+chunk_size] for i in range(0,n,chunk_size)]
-  for chunk in chunks:
-    bc_chunk = barycorr.bvc(times[chunk], ra=ra[chunk],
-                  dec=dec[chunk], obsname=obsname,
-                  raunits=raunits)
-    bc = np.concatenate((bc,bc_chunk))
-
+  bc = np.array(bc)
   # Subtract BC to be in target frame
   bc = -1*bc 
   return bc
