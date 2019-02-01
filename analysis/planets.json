@@ -42,7 +42,6 @@
     "orb_params": {}
   },
   "ups-and": {
-    "planetName": "upsilon andromedae",
     "dates": {
       "2016oct16": {
         "default_kws": {
@@ -55,26 +54,26 @@
         "order_kws": {
           "0": {
             "inverted": {
-              "sysremIterations": 6
+              "sysremIterations": 18
             },
             "non-inverted": {
-              "sysremIterations": 9
+              "sysremIterations": 1
             }
           },
           "1": {
             "inverted": {
-              "sysremIterations": 9
+              "sysremIterations": 2
             },
             "non-inverted": {
-              "sysremIterations": 8
+              "sysremIterations": 1
             }
           },
           "2": {
             "inverted": {
-              "sysremIterations": 1
+              "sysremIterations": 0
             },
             "non-inverted": {
-              "sysremIterations": 3
+              "sysremIterations": 9
             }
           }
         },
@@ -114,13 +113,13 @@
       "v_sys": -28590,
       "w_deg": 44.519
     },
+    "planetName": "upsilon andromedae",
     "template": {
       "inverted": "upsand-invert.pickle",
       "non-inverted": "upsand-noinvert.pickle"
     }
   },
   "wasp-33": {
-    "planetName": "wasp 33",
     "dates": {
       "2016oct15b": {
         "default_kws": {
@@ -132,13 +131,13 @@
         "obsname": "mmt",
         "order_kws": {
           "0": {
-            "sysremIterations": 3
+            "sysremIterations": 16
           },
           "1": {
             "sysremIterations": 5
           },
           "2": {
-            "sysremIterations": 2
+            "sysremIterations": 17
           }
         },
         "raunits": "hours"
@@ -153,13 +152,13 @@
         "obsname": "mmt",
         "order_kws": {
           "0": {
-            "sysremIterations": 8
+            "sysremIterations": 25
           },
           "1": {
-            "sysremIterations": 4
+            "sysremIterations": 25
           },
           "2": {
-            "sysremIterations": 5
+            "sysremIterations": 3
           }
         },
         "raunits": "hours"
@@ -174,13 +173,13 @@
         "obsname": "mmt",
         "order_kws": {
           "0": {
-            "sysremIterations": 7
+            "sysremIterations": 18
           },
           "1": {
-            "sysremIterations": 15
+            "sysremIterations": 20
           },
           "2": {
-            "sysremIterations": 15
+            "sysremIterations": 8
           }
         },
         "raunits": "hours"
@@ -194,6 +193,7 @@
       "v_sys": -1500,
       "w_deg": 90
     },
+    "planetName": "wasp 33",
     "ref": "http://iopscience.iop.org/article/10.3847/1538-3881/aa9433/pdf",
     "template": "wasp33.pickle"
   }

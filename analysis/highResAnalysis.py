@@ -46,6 +46,7 @@ else:
 
 #-- Composite Functions
 # def collectData(date, order, dataFileParams,
+# TODO: Collect barycentric data here instead of many times
 def collectOrder(dataPaths,
                   #Bad Data Kws
                   discard_rows = [],
@@ -129,6 +130,8 @@ def collectOrder(dataPaths,
     print('Done')
   return flux, error, wave, template, rv_params
 
+
+# TODO Normalize ERROR as well as flux?
 def prepareData(flux,
               #Normalization Params:
                 normalization = 'divide_row',
@@ -247,13 +250,12 @@ def prepareData(flux,
 
 def calcSysremIterations(planet, date, order, dataPaths,
                         target_Kp, target_Vsys,
-                        fake_signal_strengths=[1/1000],
-                        maxIterations=10,
+                        fake_signal_strengths=[0],
+                        maxIterations=10, templateName=None,
                         kpExtent = 2, vsysExtent = 4,
-                        saveEach=False,
-                        verbose=False,
-                        templateName=None, 
-                        **kwargs
+                        plotKpExtent=40, plotVsysExtent=50,
+                        saveDir=None, saveSuffix='',
+                        verbose=False, **kwargs
 ):
   """ Computes detection strength vs number of sysrem iterations
     Params: See collectData(), prepareData(), generateSmudgePlot()
@@ -272,10 +274,20 @@ def calcSysremIterations(planet, date, order, dataPaths,
   #           **analysis_kws)
 
   # Injected KpValue
-  kpRange = np.arange(-kpExtent, kpExtent+1)*1000 + target_Kp
+  searchKpRange = np.arange(-kpExtent, kpExtent+1)*1000 + target_Kp
+  if saveDir is None:
+    kpRange = searchKpRange
+  else:
+    kpRange = np.arange(-plotKpExtent, plotKpExtent+1)*1000 + target_Kp    
+
   if len(kpRange) == 0:
     kpRange = np.array([target_Kp])
   all_detection_strengths = []
+
+  if 'commonXAxes' in kwargs.keys():
+    commonXAxes = kwargs['commonXAxes']
+    vsys_range = [commonXAxes[0], commonXAxes[-1]]
+    kwargs['vsys_range'] = vsys_range
 
   for signal_strength in fake_signal_strengths:
     if verbose:
@@ -284,7 +296,10 @@ def calcSysremIterations(planet, date, order, dataPaths,
       print('-----------------------------')
     this_ds = []
 
-    fake_signal = injectFakeSignal(flux, wave, rv_params, orb_params,
+    if signal_strength == 0:
+      fake_signal = flux
+    else:
+      fake_signal = injectFakeSignal(flux, wave, rv_params, orb_params,
                     target_Kp, target_Vsys, signal_strength, 
                     dataPaths=dataPaths, verbose=(verbose>1)*2, doAlert=False)
 
@@ -297,6 +312,8 @@ def calcSysremIterations(planet, date, order, dataPaths,
     if verbose>1:
       numKps = len(kpRange)*len(sysremData)
       innerPbar = tqdm(total=numKps, desc='Aligning Xcors')
+    else:
+      innerPbar=None
 
     for i, residuals in enumerate(sysremData):
       smudges, vsys_axis, kp_axis = generateSmudgePlot(residuals, wave,
@@ -308,23 +325,54 @@ def calcSysremIterations(planet, date, order, dataPaths,
       
       vsys_window_min = np.where(vsys_axis <= target_Vsys - vsysExtent*1000)[0][-1]
       vsys_window_max = np.where(vsys_axis >= target_Vsys + vsysExtent*1000)[0][0]
-      vsys_window = vsys_axis[vsys_window_min:vsys_window_max+1]
-      window = smudges[:,vsys_window_min:vsys_window_max+1]
 
-      if saveEach:
-        datePath = saveEach+date
+      vsys_window = vsys_axis[vsys_window_min:vsys_window_max+1]
+      kpWindow = np.where([ (kp in searchKpRange)  for kp in kpRange])[0]
+      window = smudges[kpWindow,vsys_window_min:vsys_window_max+1]
+
+      if saveDir is not None:
+        plot_vsys_window_min = np.where(vsys_axis <= target_Vsys - plotVsysExtent*1000)[0][-1]
+        plot_vsys_window_max = np.where(vsys_axis >= target_Vsys + plotVsysExtent*1000)[0][0]
+
+        plot_vsysWindow = vsys_axis[plot_vsys_window_min:plot_vsys_window_max+1]
+        plotWindow = smudges[:,plot_vsys_window_min:plot_vsys_window_max+1]
+
+
+        datePath = saveDir+date
         orderPath = datePath+'/order_'+str(order)
+        fullPath  = orderPath+'/'+saveSuffix 
         if not os.path.isdir(datePath):
           os.mkdir(datePath)
         if not os.path.isdir(orderPath):
           os.mkdir(orderPath)
+        if not saveSuffix == '':
+          if not os.path.isdir(fullPath):
+            os.mkdir(fullPath)
 
-        plotSmudge(window, vsys_window, kpRange,
-          xlim=None, 
-          title=getTitleStr(planet,date,order)+' :: '+str(i),
-          saveName=orderPath+'/'+str(i).zfill(2)+'.png',
-          target_Kp=target_Kp/1000, target_Vsys=target_Vsys/1000,close=True)
+        plotSmudge(plotWindow, plot_vsysWindow, kpRange,
+          xlim=None, title=getTitleStr(planet,date,order)+' :: '+str(i),
+          target_Kp=target_Kp/1000, target_Vsys=target_Vsys/1000,
+          close=False, show=False)
 
+        # Draw Box around small Search Region
+        box_top = searchKpRange[-1]/1000
+        box_bot = searchKpRange[0]/1000
+        box_left = vsys_window[0]/1000
+        box_right = vsys_window[-1]/1000
+
+        box_color='k'
+
+        plt.plot( (box_left,box_left), (box_bot, box_top), c=box_color)
+        plt.plot( (box_right,box_right), (box_bot, box_top), c=box_color)
+        plt.plot( (box_left,box_right), (box_top, box_top), c=box_color)
+        plt.plot( (box_left,box_right), (box_bot, box_bot), c=box_color)
+
+        #mark maximum in search region
+        search_max = np.unravel_index(np.argmax(window),np.shape(window))
+        plt.scatter(vsys_window[search_max[1]]/1000,
+            kpRange[kpWindow[search_max[0]]]/1000)
+
+        plt.savefig(fullPath+'/'+str(i).zfill(2)+'.png')
       
       this_ds.append(np.max(window))
 
@@ -338,9 +386,11 @@ def calcSysremIterations(planet, date, order, dataPaths,
 
 def processSysrem(i, planet, dates, orders, dataPaths,
                   target_Kp, target_Vsys, fake_signal_strength,
-                  maxIterations=10, kpExtent = 2, vsysExtent = 4,
-                  saveEach=None, verbose=False, 
-                  templateName=None, kwargs=None
+                  maxIterations=10, templateName=None,
+                  kpExtent = 2, vsysExtent = 4,
+                  plotKpExtent=40, plotVsysExtent=50,
+                  saveDir=None, saveSuffix='',
+                  verbose=False, kwargs=None
 ):
   n = len(orders)
   date  = dates[int(i/n)]
@@ -349,15 +399,19 @@ def processSysrem(i, planet, dates, orders, dataPaths,
   return calcSysremIterations(planet, date, order, dataPaths,
               target_Kp, target_Vsys,
               fake_signal_strengths = [fake_signal_strength],
-              maxIterations = maxIterations,
+              maxIterations = maxIterations, templateName=templateName,
               kpExtent = kpExtent, vsysExtent = vsysExtent,
-              saveEach=saveEach, verbose = verbose,
-              templateName=templateName, **kwargs)
+              plotKpExtent=plotKpExtent, plotVsysExtent=plotVsysExtent,
+              saveDir=saveDir, saveSuffix=saveSuffix,
+              verbose = verbose, **kwargs)
 
 def optimizeSysrem(planet, orders, dataPaths, target_Kp, target_Vsys,
                    fake_signal_strength, maxIterations = 10,
-                   kpExtent = 5, vsysExtent = 8, dates=None,
-                   saveEach=None, saveTrend=None, cores = 1,
+                   kpExtent = 5, vsysExtent = 8, 
+                   dates=None,
+                   plotKpExtent = 40, plotVsysExtent=50,
+                   saveDir=None, saveSuffix='',
+                   cores = 1,
                    verbose = False, write=False, 
                    templateName=None,
                    **kwargs
@@ -392,7 +446,10 @@ def optimizeSysrem(planet, orders, dataPaths, target_Kp, target_Vsys,
                       maxIterations=maxIterations,
                       kpExtent=kpExtent,
                       vsysExtent=vsysExtent,
-                      saveEach=saveEach,
+                      plotKpExtent=plotKpExtent,
+                      plotVsysExtent=plotVsysExtent,
+                      saveDir=saveDir,
+                      saveSuffix=saveSuffix,
                       templateName=templateName,
                       verbose=max(0,verbose-1),
                       kwargs=kwargs),
@@ -409,9 +466,9 @@ def optimizeSysrem(planet, orders, dataPaths, target_Kp, target_Vsys,
   if verbose:
     pbar.close()
 
-  if saveTrend is not None:
-    if not os.path.isdir(saveTrend):
-      os.mkdir(saveTrend)
+  if saveDir is not None:
+    if not os.path.isdir(saveDir):
+      os.mkdir(saveDir)
 
     for d in range(len(dates)):
       plt.figure()
@@ -424,10 +481,10 @@ def optimizeSysrem(planet, orders, dataPaths, target_Kp, target_Vsys,
       plt.legend()
       if templateName is None:
         plt.title('SysremIterations: '+planet+', '+str(dates[d]))
-        plt.savefig(saveTrend+planet+'_'+str(dates[d])+'_sysIts.png')
+        plt.savefig(saveDir+planet+'_'+str(dates[d])+'_'+saveSuffix+'sysIts.png')
       else:
         plt.title('SysremIterations: '+planet+', '+str(dates[d])+', template: '+templateName)
-        plt.savefig(saveTrend+planet+'_'+str(dates[d])+'_'+templateName+'_sysIts.png')
+        plt.savefig(saveDir+planet+'_'+str(dates[d])+'_'+templateName+'_'+saveSuffix+'sysIts.png')
 
   if write:
     writeSysrem(dataPaths['planetData'], planet, dates, orders, detection_strengths, templateName)
@@ -509,8 +566,10 @@ def analyzeDate(planet = None, date = None, orders = None,
       or     B) dataPaths, orb_params, dates, date, orders
   '''
   if planet is not None:
-    orb_params, dates, dataPaths = setPlanet(planet, dataPaths,templateName=templateName)
+    orb_params, dates, planetName, dataPaths = setPlanet(planet, dataPaths,templateName=templateName)
   date_kws, order_kws, dataPaths = setDate(date, dates, dataPaths)
+
+  kwargs['planetName'] = planetName
 
   # Cannot normalize each smudge plot, only normalize finished product
   # Set up to use vsys_axis
@@ -582,7 +641,7 @@ def analyzePlanet(planet, orders, dataPaths, kpRange,
                   templateName=None,
                   verbose=False, **kwargs
 ):
-  orb_params, all_dates, dataPaths = setPlanet(planet, dataPaths,templateName=templateName)
+  orb_params, all_dates, planetName, dataPaths = setPlanet(planet, dataPaths,templateName=templateName)
 
   if dates is None:
     dates = all_dates
@@ -667,13 +726,12 @@ def plotOrder(flux, wave, order=None, orderLabels=None, cmap='viridis'):
 
   plt.show()
 
-# TODO figure out boxes center/edges thing. Figure out how dots are placed
 def plotSmudge(smudges, vsys_axis, kp_axis,
               orb_params=None, target_Kp=None,
               target_Vsys=None, title="",
               saveName = None, cmap='viridis',
               xlim=[-100,100], ylim=None, clim=None,
-              close=False
+              close=False, show=True, figsize=None
 ):
   """ Plots a smudge Plot
   """
@@ -683,8 +741,8 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   ys = kp_axis/1000
 
   # Offset xs,ys by 1/2 spacing for pcolormesh
-  pltXs = xs+getSpacing(xs)/2
-  pltYs = ys+getSpacing(ys)/2
+  pltXs = xs-getSpacing(xs)/2
+  pltYs = ys-getSpacing(ys)/2
 
   # Get Max of SmudgePlot
   ptmax = np.unravel_index(smudges.argmax(), smudges.shape)
@@ -700,7 +758,10 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   ptx = xs[ptmax[1]]
   pty = ys[ptmax[0]]
   
-  plt.figure()
+  if figsize is None:
+    plt.figure()
+  else:
+    plt.figure(figsize=figsize)
   # Plot smudges
   if clim is not None:
     plt.pcolormesh(pltXs,pltYs,smudges,cmap=cmap,
@@ -751,8 +812,8 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
 
   # Allow mouseover to display Z value
   def fmt(x, y):
-    col = np.argmin(np.abs(pltXs-x))
-    row = np.argmin(np.abs(pltYs-y))
+    col = np.argmin(np.abs(xs-x))
+    row = np.argmin(np.abs(ys-y))
     z = smudges[row,col]
     return 'x=%1.1f, y=%1.1f, z=%1.2f' % (x, y, z)
 
@@ -762,7 +823,8 @@ def plotSmudge(smudges, vsys_axis, kp_axis,
   if saveName is not None:
     plt.savefig(saveName)
 
-  plt.show()
+  if show:
+    plt.show()
 
   if close:
     plt.close()
@@ -860,6 +922,7 @@ def setPlanet(planet, dataPaths, verbose=False, templateName=None):
     
   return orb_params, dates, planetName, dataPaths
 
+# TODO should set barycorvel, save in orb_params
 def setDate(date, dates, dataPaths):
   date_kws = {**dates[date]}
   order_kws = date_kws.pop('order_kws')
@@ -1439,7 +1502,7 @@ def initializeSmudgePlot(data, wave, rv_params, template,
   orb_params['v_sys'] = 0
   orb_params['Kp']    = 1
   unitRVs = getRV(**rv_params, **orb_params)
-  barycentricCorrection = getBarycentricCorrection(**rv_params)
+  barycentricCorrection = getBarycentricCorrection(**rv_params, verbose=verbose)
 
   # vsys limited
   if vsys_range != None:
@@ -1480,6 +1543,7 @@ def generateSmudgePlot(data, wave, rv_params, template,
                              vsys_range=vsys_range,
                              normalizeXCors=normalizeXCors,
                              xcorMode=xcorMode, verbose=verbose)
+
   if verbose:
     print('Considering Kps')
   #Setting up verbose iterator
@@ -1611,7 +1675,7 @@ def injectFakeSignal(flux, wave, rv_params, orb_params,
   orb_params['Kp'] = fake_Kp
   orb_params['v_sys'] = fake_Vsys
   rvs = getRV(**rv_params, **orb_params)
-  bc  = getBarycentricCorrection(**rv_params)
+  bc  = getBarycentricCorrection(**rv_params, verbose=verbose)
   rvs = rvs + bc + fake_Vsys
 
   seq = rvs
@@ -1806,7 +1870,10 @@ def normalize(d, outRange=[0,1]):
   return (num/den) +outRange[0]
 
 def percStd(data):
-    return (np.percentile(data,84) - np.percentile(data,16))/2
+  return (np.percentile(data,84) - np.percentile(data,16))/2
+
+def rowNorm(data):
+  return data/np.apply_along_axis(percStd,1,data)[:,np.newaxis]
 ###
 
 #-- Physics
@@ -1860,7 +1927,10 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
 
   return velocity
 
-def getBarycentricCorrection(times, planetName, obsname, **kwargs):
+def getBarycentricCorrection(times, planetName, obsname, verbose=False, **kwargs):
+  if verbose:
+    print('collecting barycentric velocity')
+
   bc=[]
   for time in times:
     JDUTC = Time(time, format='jd',scale='utc')
@@ -1869,7 +1939,7 @@ def getBarycentricCorrection(times, planetName, obsname, **kwargs):
 
   bc = np.array(bc)
   # Subtract BC to be in target frame
-  bc = -1*bc 
+  bc = -bc 
   return bc
 
 def doppler(wave,v, source=False):
