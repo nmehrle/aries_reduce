@@ -1443,7 +1443,11 @@ def generateXCorMatrix(data, wave, template,
     
     if normalize:
       n = len(spec)
-      xcor = xcor / (n * np.std(spec)*np.std(template))
+      # Consider
+      # TODO
+
+      # xcor = xcor / (n * np.std(spec) * np.std(template))
+      xcor = xcor / (n*np.std(spec)*np.std(template))
 
     xcors.append(xcor)
 
@@ -1903,7 +1907,7 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
   mean_anomaly = ((2*np.pi)/P * (times - t0)) % (2*np.pi)
 
   if returnPhase:
-    return mean_anomaly
+    return mean_anomaly/(2*np.pi)
 
   if not vectorizeFSolve:
     try:
@@ -1920,6 +1924,7 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
     E = optimize.fsolve(kepler_eqn, mean_anomaly)
 
   true_anomaly = np.arctan2(np.sqrt(1-e**2) * np.sin(E), np.cos(E)-e)
+  # return true_anomaly/(2*np.pi)
 
   # TODO
   # velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w)) + v_sys
