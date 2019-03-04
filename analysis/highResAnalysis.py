@@ -1886,7 +1886,9 @@ def rowNorm(data):
   # w = w-180 equal to rv = -rv
   # switch to rv = -rv
 def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
-        vectorizeFSolve = False, returnPhase=False, **kwargs
+        vectorizeFSolve = False, returnPhase=False, 
+        returnTrueAnomaly=False,
+        **kwargs
 ):
   """
   Computes RV from given model, barycentric velocity
@@ -1903,7 +1905,7 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
       # Output will be in this unit
   :return: radial velocity
   """
-  w = np.deg2rad(w_deg-180)
+  w = np.deg2rad(w_deg)
   mean_anomaly = ((2*np.pi)/P * (times - t0)) % (2*np.pi)
 
   if returnPhase:
@@ -1924,13 +1926,14 @@ def getRV(times, t0=0, P=0, w_deg=0, e=0, Kp=1, v_sys=0,
     E = optimize.fsolve(kepler_eqn, mean_anomaly)
 
   true_anomaly = np.arctan2(np.sqrt(1-e**2) * np.sin(E), np.cos(E)-e)
-  # return true_anomaly/(2*np.pi)
+  if returnTrueAnomaly:
+    return true_anomaly/(2*np.pi)
 
   # TODO
   # velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w)) + v_sys
   velocity = Kp * (np.cos(true_anomaly+w) + e*np.cos(w))
 
-  return velocity
+  return -velocity
 
 def getBarycentricCorrection(times, planetName, obsname, verbose=False, **kwargs):
   if verbose:
